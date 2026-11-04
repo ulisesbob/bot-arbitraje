@@ -8,6 +8,7 @@ from __future__ import annotations
 import json
 import time
 import urllib.request
+from concurrent.futures import ThreadPoolExecutor
 
 import arbitraje as a
 
@@ -158,10 +159,14 @@ def resp_arbitraje(resultados: list[tuple[str, a.Oportunidad | None]], umbral: f
     return "\n".join(out)
 
 
-def resp_umbral(cfg: dict, arg: str | None) -> str:
+def resp_umbral(cfg: dict, arg: str | None, persistente: bool = True) -> str:
     if not arg:
         return (f"⚙️ Umbral actual: <b>{cfg['umbral_pct']}%</b>\n"
                 f"Para cambiarlo: <code>/umbral 1.5</code>")
+    if not persistente:
+        return ("⚙️ Umbral actual: <b>{u}%</b>\n"
+                "Desde acá no puedo guardarlo: cambiá <code>umbral_pct</code> en "
+                "<code>CONFIG_DEFAULT</code> de arbitraje.py y hacé push.").format(u=cfg["umbral_pct"])
     try:
         nuevo = float(arg.replace(",", "."))
     except ValueError:
@@ -181,7 +186,19 @@ def obtener_dolar() -> dict:
         return json.loads(r.read().decode("utf-8"))
 
 
-def manejar(texto: str, cfg: dict) -> str:
+def _descargar_varios(pares: list[str], volumen: float) -> dict[str, dict | None]:
+    """Descarga varios pares en paralelo. None donde fallo."""
+    def uno(par):
+        try:
+            return par, a.obtener_cotizaciones(par, volumen)
+        except Exception:  # noqa: BLE001
+            return par, None
+    with ThreadPoolExecutor(max_workers=min(8, len(pares))) as ex:
+        return dict(ex.map(uno, pares))
+
+
+def manejar(texto: str, cfg: dict, persistente: bool = True) -> str:
+    """persistente=False en el webhook (Vercel), donde no se puede escribir config.json."""
     partes = texto.strip().split()
     cmd = partes[0].lstrip("/").split("@")[0].lower()
     arg = partes[1] if len(partes) > 1 else None
@@ -195,28 +212,23 @@ def manejar(texto: str, cfg: dict) -> str:
             return resp_moneda(cmd, cot, fiat.upper(), max_antiguedad=cfg["max_antiguedad_seg"],
                                max_desvio_pct=cfg["max_desvio_pct"], excluir=excluir)
         if cmd == "dolar":
-            stables = {}
-            for coin in ("usdt", "usdc", "dai"):
-                try:
-                    stables[coin] = a.obtener_cotizaciones(f"{coin}/{fiat}", cfg["volumen"])
-                except Exception:  # noqa: BLE001
-                    pass
+            descargas = _descargar_varios([f"{c}/{fiat}" for c in ("usdt", "usdc", "dai")], cfg["volumen"])
+            stables = {par.split("/")[0]: cot for par, cot in descargas.items() if cot}
             return resp_dolar(obtener_dolar(), stables, max_antiguedad=cfg["max_antiguedad_seg"],
                               excluir=excluir)
         if cmd == "arbitraje":
             ahora = time.time()
             res = []
-            for par in cfg["pares"]:
-                try:
-                    cot = a.obtener_cotizaciones(par, cfg["volumen"])
-                    ops = a.detectar_oportunidades(cot, -100, cfg["max_antiguedad_seg"], ahora, par,
-                                                   excluir, cfg["max_desvio_pct"])
-                    res.append((par, ops[0] if ops else None))
-                except Exception:  # noqa: BLE001
+            for par, cot in _descargar_varios(cfg["pares"], cfg["volumen"]).items():
+                if cot is None:
                     res.append((par, None))
+                    continue
+                ops = a.detectar_oportunidades(cot, -100, cfg["max_antiguedad_seg"], ahora, par,
+                                               excluir, cfg["max_desvio_pct"])
+                res.append((par, ops[0] if ops else None))
             return resp_arbitraje(res, cfg["umbral_pct"])
         if cmd == "umbral":
-            return resp_umbral(cfg, arg)
+            return resp_umbral(cfg, arg, persistente)
     except Exception as e:  # noqa: BLE001
         return f"Error consultando CriptoYa: {e}"
     return "No conozco ese comando.\n\n" + resp_ayuda()

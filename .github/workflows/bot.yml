@@ -35,7 +35,8 @@ jobs:
         env:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
-        run: python3 arbitraje.py --ciclo
+        # --sin-comandos: los comandos los responde al instante el webhook en Vercel (api/telegram.py)
+        run: python3 arbitraje.py --ciclo --sin-comandos
 
       - name: Guardar estado
         if: always()

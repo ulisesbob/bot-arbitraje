@@ -1,0 +1,12 @@
+config.json
+cooldown.json
+test_*.py
+deploy/
+.github/
+__pycache__/
+.pytest_cache/
+*.md
+*.bat
+Dockerfile
+.dockerignore
+fly.toml

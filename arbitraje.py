@@ -130,11 +130,12 @@ class Cooldown:
 
 # ---------- IO ----------
 
-def cargar_config() -> dict:
+def cargar_config(escribir: bool = True) -> dict:
+    """escribir=False para entornos de solo lectura (Vercel): no crea config.json."""
     cfg = dict(CONFIG_DEFAULT)
     if CONFIG_PATH.exists():
         cfg.update(json.loads(CONFIG_PATH.read_text(encoding="utf-8")))
-    else:
+    elif escribir:
         CONFIG_PATH.write_text(json.dumps(CONFIG_DEFAULT, indent=2, ensure_ascii=False), encoding="utf-8")
         print(f"[info] cree {CONFIG_PATH.name} con valores por defecto, editalo a gusto")
     # el archivo manda; las variables de entorno solo rellenan campos vacios
@@ -244,11 +245,12 @@ def confirmar_mensajes(token: str, offset: int | None) -> None:
         print(f"[telegram] no pude confirmar mensajes: {e}")
 
 
-def ciclo(cfg: dict, cooldown: Cooldown) -> None:
+def ciclo(cfg: dict, cooldown: Cooldown, sin_comandos: bool = False) -> None:
     """Una corrida completa para entornos sin proceso permanente (GitHub Actions, cron):
-    escanea, responde los comandos que llegaron desde la ultima vez, y termina."""
+    escanea, responde los comandos que llegaron desde la ultima vez, y termina.
+    sin_comandos=True cuando los comandos los atiende el webhook (api/telegram.py)."""
     pasada(cfg, cooldown)
-    if cfg["telegram_token"] and cfg["telegram_chat_id"]:
+    if not sin_comandos and cfg["telegram_token"] and cfg["telegram_chat_id"]:
         offset = atender_comandos(cfg, None, espera=0)
         confirmar_mensajes(cfg["telegram_token"], offset)
 
@@ -314,6 +316,8 @@ def main() -> int:
     ap.add_argument("--once", action="store_true", help="una sola pasada y salir")
     ap.add_argument("--ciclo", action="store_true",
                     help="una pasada + responder comandos pendientes y salir (para GitHub Actions / cron)")
+    ap.add_argument("--sin-comandos", action="store_true",
+                    help="con --ciclo: no leer mensajes (los atiende el webhook de Vercel)")
     ap.add_argument("--test-telegram", action="store_true", help="manda un mensaje de prueba y sale")
     args = ap.parse_args()
 
@@ -329,8 +333,9 @@ def main() -> int:
     print(f"[info] pares={cfg['pares']} volumen={cfg['volumen']} umbral={cfg['umbral_pct']}% "
           f"cada {cfg['intervalo_seg']}s")
     if args.ciclo:
-        registrar_comandos(cfg["telegram_token"]) if cfg["telegram_token"] else None
-        ciclo(cfg, cooldown)
+        if cfg["telegram_token"] and not args.sin_comandos:
+            registrar_comandos(cfg["telegram_token"])
+        ciclo(cfg, cooldown, sin_comandos=args.sin_comandos)
         return 0
     con_comandos = bool(cfg["telegram_token"] and cfg["telegram_chat_id"]) and not args.once
     if con_comandos:
