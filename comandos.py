@@ -1,5 +1,7 @@
 """Comandos de Telegram del bot. Las funciones resp_* arman el texto a partir de
-datos ya descargados (asi se pueden testear); manejar() es la que descarga."""
+datos ya descargados (asi se pueden testear); manejar() es la que descarga.
+
+Formato: HTML de Telegram. <pre> para tablas alineadas (monoespaciado)."""
 
 from __future__ import annotations
 
@@ -23,27 +25,61 @@ COMANDOS = [
 
 MONEDAS = {"btc": "Bitcoin", "eth": "Ethereum", "usdt": "USDT", "usdc": "USDC", "dai": "DAI"}
 
+SEP = a.SEP
+
+
+def _semaforo(spread: float, umbral: float) -> str:
+    if spread >= umbral:
+        return "\U0001f7e2"  # verde: alerta
+    if spread > 0:
+        return "\U0001f7e1"  # amarillo: positivo pero chico
+    return "\U0001f534"      # rojo: negativo
+
 
 def resp_ayuda() -> str:
-    lineas = [f"/{c} - {d}" for c, d in COMANDOS]
-    return "<b>Comandos:</b>\n" + "\n".join(lineas)
+    grupos = [
+        ("\U0001f4ca Mercado", ["arbitraje", "dolar"]),
+        ("\U0001fa99 Por moneda", ["btc", "eth", "usdt", "usdc", "dai"]),
+        ("⚙️ Configuración", ["umbral", "ayuda"]),
+    ]
+    desc = dict(COMANDOS)
+    out = ["\U0001f916 <b>Bot de arbitraje</b>", SEP]
+    for titulo, cmds in grupos:
+        out.append(f"<b>{titulo}</b>")
+        out += [f"/{c} — {desc[c]}" for c in cmds]
+        out.append("")
+    out.append("<i>Las alertas automáticas llegan solas cuando un spread supera el umbral.</i>")
+    return "\n".join(out)
 
 
 def resp_moneda(coin: str, cot: dict, fiat: str = "ARS", ahora: float | None = None,
                 max_antiguedad: int = 600, max_desvio_pct: float = 5.0, n: int = 3) -> str:
     ahora = ahora or time.time()
     validas = a.filtrar_cotizaciones(cot, max_antiguedad, ahora, max_desvio_pct=max_desvio_pct)
+    nombre = MONEDAS.get(coin, coin.upper())
     if not validas:
-        return f"No hay cotizaciones validas de {MONEDAS.get(coin, coin.upper())} ahora."
+        return f"No hay cotizaciones válidas de {nombre} ahora."
     compra = sorted(validas.items(), key=lambda kv: kv[1]["totalAsk"])[:n]
     venta = sorted(validas.items(), key=lambda kv: -kv[1]["totalBid"])[:n]
-    nombre = MONEDAS.get(coin, coin.upper())
-    out = [f"<b>{nombre} / {fiat}</b>", "", "Mas barato para <b>comprar</b>:"]
-    out += [f"  {i + 1}. {ex}: {a.precio(q['totalAsk'])}" for i, (ex, q) in enumerate(compra)]
-    out += ["", "Mejor para <b>vender</b>:"]
-    out += [f"  {i + 1}. {ex}: {a.precio(q['totalBid'])}" for i, (ex, q) in enumerate(venta)]
+    ancho = max(len(ex) for ex, _ in compra + venta)
+    icono = a.ICONO.get(coin, "\U0001fa99")
+
+    def tabla(filas, campo):
+        return "<pre>" + "\n".join(
+            f"{i + 1}. {ex:<{ancho}}  {a.precio(q[campo]):>14}" for i, (ex, q) in enumerate(filas)
+        ) + "</pre>"
+
     spread = (venta[0][1]["totalBid"] - compra[0][1]["totalAsk"]) / compra[0][1]["totalAsk"] * 100
-    out += ["", f"Spread entre ambos: {spread:+.2f}%", "(precios con comisiones, segun CriptoYa)"]
+    out = [
+        f"{icono} <b>{nombre} / {fiat}</b>",
+        SEP,
+        "\U0001f7e2 <b>Comprar más barato</b>",
+        tabla(compra, "totalAsk"),
+        "\U0001f534 <b>Vender mejor</b>",
+        tabla(venta, "totalBid"),
+        f"↔️ Spread entre ambos: <b>{spread:+.2f}%</b>",
+        "<i>Precios con comisiones, según CriptoYa.</i>",
+    ]
     return "\n".join(out)
 
 
@@ -51,7 +87,7 @@ def resp_dolar(dolar: dict, stables: dict[str, dict], ahora: float | None = None
                max_antiguedad: int = 600) -> str:
     """dolar: json de /api/dolar. stables: {"usdt": cotizaciones, "usdc": ..., "dai": ...}."""
     ahora = ahora or time.time()
-    opciones = []  # (precio, etiqueta, como)
+    opciones = []  # (precio, etiqueta, nota)
 
     def _get(d, *ks):
         for k in ks:
@@ -61,15 +97,15 @@ def resp_dolar(dolar: dict, stables: dict[str, dict], ahora: float | None = None
         return d
 
     if _get(dolar, "oficial", "ask"):
-        opciones.append((dolar["oficial"]["ask"], "Oficial (banco)", "homebanking, con tope mensual y requisitos"))
+        opciones.append((dolar["oficial"]["ask"], "Oficial", "banco, con tope y requisitos"))
     if _get(dolar, "blue", "ask"):
-        opciones.append((dolar["blue"]["ask"], "Blue", "efectivo informal, sin registro"))
+        opciones.append((dolar["blue"]["ask"], "Blue", "efectivo informal"))
     if _get(dolar, "mep", "al30", "24hs", "price"):
-        opciones.append((dolar["mep"]["al30"]["24hs"]["price"], "MEP (AL30)", "broker/bolsa, dolares en tu cuenta bancaria"))
+        opciones.append((dolar["mep"]["al30"]["24hs"]["price"], "MEP", "broker, dólares en tu banco"))
     if _get(dolar, "ccl", "al30", "24hs", "price"):
-        opciones.append((dolar["ccl"]["al30"]["24hs"]["price"], "CCL (AL30)", "broker, dolares en cuenta del exterior"))
+        opciones.append((dolar["ccl"]["al30"]["24hs"]["price"], "CCL", "broker, cuenta en el exterior"))
     if _get(dolar, "tarjeta", "price"):
-        opciones.append((dolar["tarjeta"]["price"], "Tarjeta", "consumos en el exterior con impuestos"))
+        opciones.append((dolar["tarjeta"]["price"], "Tarjeta", "consumos afuera, con impuestos"))
 
     mejores_stable = []
     for coin, cot in stables.items():
@@ -79,46 +115,61 @@ def resp_dolar(dolar: dict, stables: dict[str, dict], ahora: float | None = None
             mejores_stable.append((q["totalAsk"], coin.upper(), ex))
     if mejores_stable:
         p, coin, ex = min(mejores_stable)
-        opciones.append((p, f"Cripto ({coin} en {ex})", "compras la stablecoin en el exchange, retiro inmediato"))
+        opciones.append((p, "Cripto", f"{coin} en {ex}, inmediato"))
 
     if not opciones:
-        return "No pude obtener cotizaciones del dolar ahora."
+        return "No pude obtener cotizaciones del dólar ahora."
     opciones.sort()
-    out = ["<b>Dolar: de mas barato a mas caro</b>", ""]
-    for i, (p, et, como) in enumerate(opciones):
-        marca = " ⭐" if i == 0 else ""
-        out.append(f"{i + 1}. <b>{et}</b>: ${p:,.0f}{marca}\n    {como}")
+    ancho = max(len(et) for _, et, _ in opciones)
+    filas = []
+    for i, (p, et, _) in enumerate(opciones):
+        marca = "⭐" if i == 0 else "  "
+        filas.append(f"{marca} {et:<{ancho}}  $ {p:>6,.0f}")
+    out = [
+        "\U0001f4b5 <b>Dólar hoy</b> — de más barato a más caro",
+        SEP,
+        "<pre>" + "\n".join(filas) + "</pre>",
+        "<i>" + " · ".join(f"{et}: {nota}" for _, et, nota in opciones) + "</i>",
+    ]
     if mejores_stable:
-        out += ["", "Stablecoins mas baratas por exchange:"]
-        for p, coin, ex in sorted(mejores_stable):
-            out.append(f"  {coin}: {ex} a ${p:,.2f}")
+        ancho_ex = max(len(ex) for _, _, ex in mejores_stable)
+        out += [
+            "",
+            "\U0001fa99 <b>Stablecoin más barata por exchange</b>",
+            "<pre>" + "\n".join(
+                f"{coin:<4} {ex:<{ancho_ex}}  $ {p:>9,.2f}" for p, coin, ex in sorted(mejores_stable)
+            ) + "</pre>",
+        ]
     return "\n".join(out)
 
 
 def resp_arbitraje(resultados: list[tuple[str, a.Oportunidad | None]], umbral: float) -> str:
-    out = [f"<b>Mejor spread por par</b> (alerta si supera {umbral}%)", ""]
-    for par, o in resultados:
-        if o is None:
-            out.append(f"{par.upper()}: sin datos")
-            continue
-        marca = " \U0001f6a8" if o.spread_pct >= umbral else ""
-        out.append(f"{par.upper()}: {o.spread_pct:+.2f}%{marca}\n"
-                   f"    comprar {o.comprar_en} {a.precio(o.precio_compra)} / vender {o.vender_en} {a.precio(o.precio_venta)}")
+    con_datos = sorted((r for r in resultados if r[1] is not None), key=lambda r: -r[1].spread_pct)
+    sin_datos = [par for par, o in resultados if o is None]
+    out = [f"\U0001f4ca <b>Spreads ahora</b> — alerta si supera <b>{umbral}%</b>", SEP]
+    for par, o in con_datos:
+        out.append(f"{_semaforo(o.spread_pct, umbral)} <b>{par.upper()}</b>  <b>{o.spread_pct:+.2f}%</b>")
+        out.append(f"<pre>  comprar {o.comprar_en:<13} {a.precio(o.precio_compra):>14}\n"
+                   f"  vender  {o.vender_en:<13} {a.precio(o.precio_venta):>14}</pre>")
+    if sin_datos:
+        out.append("⚪ sin datos: " + ", ".join(p.upper() for p in sin_datos))
+    out.append("<i>\U0001f7e2 supera el umbral · \U0001f7e1 positivo · \U0001f534 negativo</i>")
     return "\n".join(out)
 
 
 def resp_umbral(cfg: dict, arg: str | None) -> str:
     if not arg:
-        return f"Umbral actual: {cfg['umbral_pct']}%. Para cambiarlo: /umbral 1.5"
+        return (f"⚙️ Umbral actual: <b>{cfg['umbral_pct']}%</b>\n"
+                f"Para cambiarlo: <code>/umbral 1.5</code>")
     try:
         nuevo = float(arg.replace(",", "."))
     except ValueError:
-        return f"No entendi '{arg}'. Ejemplo: /umbral 1.5"
+        return f"No entendí '{arg}'. Ejemplo: <code>/umbral 1.5</code>"
     if not 0 <= nuevo <= 50:
-        return "Pone un valor entre 0 y 50."
+        return "Poné un valor entre 0 y 50."
     cfg["umbral_pct"] = nuevo
     a.guardar_config(cfg)
-    return f"Listo, ahora aviso cuando el spread supere {nuevo}%."
+    return f"✅ Listo: aviso cuando el spread supere <b>{nuevo}%</b>."
 
 
 # ---------- descarga + despacho ----------

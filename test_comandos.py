@@ -1,3 +1,4 @@
+import re
 import time
 import arbitraje as a
 import comandos as c
@@ -28,22 +29,22 @@ def test_ayuda_lista_todos_los_comandos():
 
 
 def test_moneda_ordena_compra_y_venta_y_descarta_viejos():
-    txt = c.resp_moneda("usdt", USDT, "ARS", ahora=NOW)
+    txt = a.texto_plano(c.resp_moneda("usdt", USDT, "ARS", ahora=NOW))
     assert "viejo" not in txt
     # mas barato para comprar: binancep2p (1669), luego okexp2p (1672), fiwind (1680)
     assert txt.index("1. binancep2p") < txt.index("2. okexp2p") < txt.index("3. fiwind")
     # mejor para vender: okexp2p (1669) primero
-    assert "1. okexp2p: 1,669.00" in txt
+    assert re.search(r"1\. okexp2p\s+1,669\.00", txt)
     assert "Spread entre ambos: +0.00%" in txt
 
 
 def test_dolar_ordena_de_barato_a_caro_y_marca_el_mejor():
-    txt = c.resp_dolar(DOLAR, {"usdt": USDT}, ahora=NOW)
-    lineas = [l for l in txt.splitlines() if l[:2] in ("1.", "2.", "3.", "4.", "5.", "6.")]
-    assert "Blue" in lineas[0] and "⭐" in lineas[0]
-    assert "Oficial" in lineas[1]
-    assert "Tarjeta" in lineas[-1]
-    assert "USDT: binancep2p a $1,669.00" in txt
+    txt = a.texto_plano(c.resp_dolar(DOLAR, {"usdt": USDT}, ahora=NOW))
+    filas = [l for l in txt.splitlines() if "$" in l and ("⭐" in l or l.startswith("  "))]
+    assert "Blue" in filas[0] and "⭐" in filas[0]
+    assert "Oficial" in filas[1]
+    assert "Tarjeta" in filas[5]
+    assert re.search(r"USDT\s+binancep2p\s+\$\s+1,669\.00", txt)
 
 
 def test_dolar_sin_datos():
@@ -57,17 +58,18 @@ def test_umbral_lee_y_cambia(tmp_path, monkeypatch):
     assert "1.5%" in c.resp_umbral(cfg, "1,5")
     assert cfg["umbral_pct"] == 1.5
     assert (tmp_path / "config.json").exists()
-    assert "No entendi" in c.resp_umbral(cfg, "abc")
+    assert "No entendí" in c.resp_umbral(cfg, "abc")
     assert "entre 0 y 50" in c.resp_umbral(cfg, "99")
 
 
 def test_arbitraje_marca_los_que_superan_umbral():
     o1 = a.Oportunidad("usdt/usd", "binancep2p", 1.04, "fiwind", 1.065, 2.4)
     o2 = a.Oportunidad("btc/ars", "x", 100, "y", 99, -1.0)
-    txt = c.resp_arbitraje([("usdt/usd", o1), ("btc/ars", o2), ("eth/ars", None)], umbral=1.0)
-    assert "USDT/USD: +2.40% \U0001f6a8" in txt
-    assert "BTC/ARS: -1.00%\n" in txt
-    assert "ETH/ARS: sin datos" in txt
+    txt = a.texto_plano(c.resp_arbitraje([("btc/ars", o2), ("usdt/usd", o1), ("eth/ars", None)], umbral=1.0))
+    assert "\U0001f7e2 USDT/USD  +2.40%" in txt   # verde: supera el umbral
+    assert "\U0001f534 BTC/ARS  -1.00%" in txt    # rojo: negativo
+    assert txt.index("USDT/USD") < txt.index("BTC/ARS")  # ordenado de mejor a peor
+    assert "sin datos: ETH/ARS" in txt
 
 
 def test_manejar_comando_desconocido_devuelve_ayuda():

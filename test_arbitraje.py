@@ -65,15 +65,17 @@ def test_formato_precio_usa_4_decimales_para_usd():
     assert a.precio(1.0659) == "1.0659"
     assert a.precio(1667.6) == "1,667.60"
     o = a.Oportunidad("usdt/usd", "binancep2p", 1.04, "fiwind", 1.065, 2.4)
-    assert "a 1.0650" in a.formatear(o, 1000)
+    msg = a.texto_plano(a.formatear(o, 1000))
+    assert "1.0400" in msg and "1.0650" in msg
+    assert "+2.40%" in msg and "~24 USD" in msg
 
 
 def test_alerta_incluye_pasos_con_los_exchanges():
     o = a.Oportunidad("usdt/usd", "binancep2p", 1.04, "fiwind", 1.065, 2.4)
-    msg = a.formatear(o, 1000, incluir_pasos=True)
-    assert "Como ejecutarlo" in msg
-    assert "1. En binancep2p" in msg and "Retirar USDT" in msg and "vende el USDT en fiwind" in msg
-    assert "Como ejecutarlo" not in a.formatear(o, 1000, incluir_pasos=False)
+    msg = a.texto_plano(a.formatear(o, 1000, incluir_pasos=True))
+    assert "Cómo ejecutarlo" in msg
+    assert "En binancep2p: comprá USDT" in msg and "Retirar USDT" in msg and "vendé el USDT en fiwind" in msg
+    assert "Cómo ejecutarlo" not in a.formatear(o, 1000, incluir_pasos=False)
 
 
 def test_cooldown_persiste_entre_reinicios(tmp_path):

@@ -176,15 +176,19 @@ def precio(x: float) -> str:
     return f"{x:,.4f}" if x < 10 else f"{x:,.2f}"
 
 
+SEP = "─" * 24  # linea horizontal
+ICONO = {"btc": "₿", "eth": "Ξ", "usdt": "\U0001f4b5", "usdc": "\U0001f4b5", "dai": "\U0001f4b5"}
+
+
 def pasos(o: Oportunidad) -> str:
     coin = o.par.upper().split("/")[0]
     return (
-        f"\n\n<b>Como ejecutarlo</b>\n"
-        f"1. En {o.comprar_en}: compra {coin} con el fiat que ya tengas depositado.\n"
-        f"2. En {o.vender_en}: Depositar {coin}, elegi una red barata (TRC20, Polygon, Solana) y copia la direccion.\n"
-        f"3. En {o.comprar_en}: Retirar {coin} a esa direccion por LA MISMA red. Primero un monto chico de prueba.\n"
-        f"4. Cuando llegue, vende el {coin} en {o.vender_en}. Verifica que el precio siga antes de confirmar.\n"
-        f"5. Resta comision de red y de retiro: si queda menos que el spread, no vale la pena."
+        f"\n\n\U0001f4cb <b>Cómo ejecutarlo</b>\n"
+        f"1️⃣ En <b>{o.comprar_en}</b>: comprá {coin} con el fiat que ya tengas depositado.\n"
+        f"2️⃣ En <b>{o.vender_en}</b>: Depositar {coin}, elegí una red barata (TRC20, Polygon, Solana) y copiá la dirección.\n"
+        f"3️⃣ En <b>{o.comprar_en}</b>: Retirar {coin} a esa dirección por <b>la misma red</b>. Primero un monto chico de prueba.\n"
+        f"4️⃣ Cuando llegue, vendé el {coin} en <b>{o.vender_en}</b>. Verificá que el precio siga antes de confirmar.\n"
+        f"5️⃣ Restá comisión de red y de retiro: si queda menos que el spread, no vale la pena."
     )
 
 
@@ -252,12 +256,16 @@ def ciclo(cfg: dict, cooldown: Cooldown) -> None:
 def formatear(o: Oportunidad, volumen: float, incluir_pasos: bool = True) -> str:
     coin, fiat = o.par.upper().split("/")
     ganancia = volumen * o.spread_pct / 100
+    ancho = max(len(o.comprar_en), len(o.vender_en))
     msg = (
-        f"\U0001f6a8 <b>Arbitraje {coin}/{fiat}</b>  +{o.spread_pct:.2f}%\n"
-        f"Comprar en <b>{o.comprar_en}</b> a {precio(o.precio_compra)}\n"
-        f"Vender en <b>{o.vender_en}</b> a {precio(o.precio_venta)}\n"
-        f"Ganancia bruta sobre {volumen:,.0f} {fiat}: ~{ganancia:,.0f} {fiat}\n"
-        f"(precios con comisiones de CriptoYa, sin contar transferencias ni retiros)"
+        f"\U0001f6a8 <b>ARBITRAJE {coin}/{fiat}</b>   ▲ <b>+{o.spread_pct:.2f}%</b>\n"
+        f"{SEP}\n"
+        f"<pre>"
+        f"\U0001f7e2 Comprar  {o.comprar_en:<{ancho}}  {precio(o.precio_compra)}\n"
+        f"\U0001f534 Vender   {o.vender_en:<{ancho}}  {precio(o.precio_venta)}"
+        f"</pre>\n"
+        f"\U0001f4b0 Ganancia bruta: <b>~{ganancia:,.0f} {fiat}</b> por cada {volumen:,.0f} {fiat}\n"
+        f"<i>Precios con comisiones de CriptoYa, sin transferencias ni retiros.</i>"
     )
     if incluir_pasos:
         msg += pasos(o)
@@ -265,7 +273,9 @@ def formatear(o: Oportunidad, volumen: float, incluir_pasos: bool = True) -> str
 
 
 def texto_plano(html: str) -> str:
-    return html.replace("<b>", "").replace("</b>", "")
+    for tag in ("<b>", "</b>", "<i>", "</i>", "<pre>", "</pre>", "<code>", "</code>"):
+        html = html.replace(tag, "")
+    return html
 
 
 def pasada(cfg: dict, cooldown: Cooldown, mostrar_resumen: bool = True) -> list[Oportunidad]:
