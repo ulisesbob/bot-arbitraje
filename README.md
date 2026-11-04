@@ -29,7 +29,7 @@ Se crea solo la primera vez. Campos:
 |---|---|---|
 | `pares` | pares a vigilar (`coin/fiat` según CriptoYa) | usdt, usdc, dai, btc, eth contra ars y contra usd |
 | `volumen` | monto en fiat para el cálculo de precios con comisión | 1000 |
-| `umbral_pct` | spread mínimo para alertar | 1.0 |
+| `umbral_pct` | spread mínimo para alertar | 1.5 |
 | `intervalo_seg` | cada cuánto consulta | 60 |
 | `max_antiguedad_seg` | descarta cotizaciones más viejas que esto | 600 |
 | `cooldown_seg` | no repite la misma alerta (par + exchanges) durante este tiempo; se guarda en `cooldown.json` y sobrevive reinicios | 900 |

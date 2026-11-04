@@ -30,7 +30,7 @@ CONFIG_PATH = Path(__file__).with_name("config.json")
 CONFIG_DEFAULT = {
     "pares": ["usdt/ars", "usdc/ars", "dai/ars", "btc/ars", "eth/ars", "usdt/usd", "usdc/usd", "btc/usd", "eth/usd"],
     "volumen": 1000,
-    "umbral_pct": 1.0,
+    "umbral_pct": 1.5,
     "intervalo_seg": 60,
     "max_antiguedad_seg": 600,
     "cooldown_seg": 900,

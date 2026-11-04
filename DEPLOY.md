@@ -1,5 +1,41 @@
 # Correr el bot en un servidor (sin depender de tu compu)
 
+## Opción 0: GitHub Actions (gratis, sin tarjeta; es la que está activa)
+
+GitHub corre `python arbitraje.py --ciclo` cada 10 minutos en sus servidores: una pasada
+de escaneo, responde los comandos de Telegram que llegaron desde la corrida anterior,
+y termina. El estado (`cooldown.json` y el umbral cambiado con `/umbral`) se guarda en
+el cache de Actions entre corridas.
+
+Lo que cambia respecto a correrlo en tu compu:
+- Las alertas y las respuestas a comandos llegan con hasta 10 a 15 minutos de demora
+  (GitHub suele atrasar un poco los cron).
+- El repositorio es público (el código, no el token: ese va en un secreto del repo).
+
+Dónde está todo:
+- Repositorio: https://github.com/ulisesbob/bot-arbitraje
+- Corridas y logs: pestaña Actions del repo. "Run workflow" lo dispara a mano.
+- Secretos: Settings > Secrets and variables > Actions (`TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID`).
+
+Para actualizar el bot después de cambiar código, desde la carpeta `cripto-arbitraje`:
+
+```bash
+git add -A
+```
+
+```bash
+git commit -m "lo que cambiaste"
+```
+
+```bash
+git push
+```
+
+Para pausarlo: Actions > bot arbitraje > "..." > Disable workflow. Para volver a correrlo
+en tu compu, deshabilitá el workflow primero: dos bots leyendo el mismo chat se pisan.
+
+## Otras opciones (siempre prendido, alertas al minuto)
+
 Tres caminos, del más rápido al más barato. En todos, antes de arrancar apagá el bot
 local (Ctrl-C en la pestaña) para que no haya dos bots leyendo el mismo chat de
 Telegram: si corren dos a la vez, se reparten los comandos y uno responde y el otro no.

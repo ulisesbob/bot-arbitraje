@@ -20,13 +20,16 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      # cooldown.json recuerda que alertas ya se mandaron, para no repetirlas cada 10 min
-      - name: Restaurar cooldown
+      # cooldown.json recuerda que alertas ya se mandaron, para no repetirlas cada 10 min;
+      # config.json guarda los cambios hechos con /umbral
+      - name: Restaurar estado
         uses: actions/cache/restore@v4
         with:
-          path: cooldown.json
-          key: cooldown-${{ github.run_id }}
-          restore-keys: cooldown-
+          path: |
+            cooldown.json
+            config.json
+          key: estado-${{ github.run_id }}
+          restore-keys: estado-
 
       - name: Escanear y responder comandos
         env:
@@ -34,9 +37,11 @@ jobs:
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
         run: python3 arbitraje.py --ciclo
 
-      - name: Guardar cooldown
+      - name: Guardar estado
         if: always()
         uses: actions/cache/save@v4
         with:
-          path: cooldown.json
-          key: cooldown-${{ github.run_id }}
+          path: |
+            cooldown.json
+            config.json
+          key: estado-${{ github.run_id }}

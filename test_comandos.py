@@ -53,7 +53,7 @@ def test_dolar_sin_datos():
 def test_umbral_lee_y_cambia(tmp_path, monkeypatch):
     monkeypatch.setattr(a, "CONFIG_PATH", tmp_path / "config.json")
     cfg = dict(a.CONFIG_DEFAULT)
-    assert "1.0%" in c.resp_umbral(cfg, None)
+    assert f"{cfg['umbral_pct']}%" in c.resp_umbral(cfg, None)
     assert "1.5%" in c.resp_umbral(cfg, "1,5")
     assert cfg["umbral_pct"] == 1.5
     assert (tmp_path / "config.json").exists()
