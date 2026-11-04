@@ -11,3 +11,4 @@ Dockerfile
 .dockerignore
 fly.toml
 rulos.json
+cloudflare/

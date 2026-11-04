@@ -2,6 +2,9 @@
   "functions": {
     "api/telegram.py": {
       "maxDuration": 30
+    },
+    "api/scan.py": {
+      "maxDuration": 60
     }
   }
 }

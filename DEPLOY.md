@@ -1,6 +1,6 @@
 # Correr el bot en un servidor (sin depender de tu compu)
 
-## Opción 0: GitHub Actions (gratis, sin tarjeta; es la que está activa)
+## Opción 0: GitHub Actions (gratis, sin tarjeta; respaldo cada 10 minutos)
 
 GitHub corre `python arbitraje.py --ciclo` cada 10 minutos en sus servidores: una pasada
 de escaneo, responde los comandos de Telegram que llegaron desde la corrida anterior,
@@ -33,6 +33,42 @@ git push
 
 Para pausarlo: Actions > bot arbitraje > "..." > Disable workflow. Para volver a correrlo
 en tu compu, deshabilitá el workflow primero: dos bots leyendo el mismo chat se pisan.
+
+## Alertas cada minuto: reloj en Cloudflare Workers (gratis, sin tarjeta)
+
+GitHub Actions no puede correr más seguido que cada 10 o 15 minutos. Para escanear cada
+minuto, un Worker de Cloudflare ([cloudflare/worker.js](cloudflare/worker.js)) con un cron
+`* * * * *` llama a `POST /api/scan` en Vercel ([api/scan.py](api/scan.py)), que hace la
+pasada completa (arbitraje simple + rulos) y devuelve el estado actualizado. El Worker guarda
+ese estado en Cloudflare KV y lo manda en la próxima llamada. Toda la lógica sigue en Python.
+
+Configurar (una vez):
+
+1. Crear cuenta gratuita en https://dash.cloudflare.com/sign-up (solo email).
+2. Loguear la herramienta (abre el navegador):
+
+```bash
+cd "C:\Users\Ulise\Desktop\strat qqq 38%\cripto-arbitraje\cloudflare"; npx wrangler login
+```
+
+3. Correr el script, que redespliega Vercel, crea el namespace KV, carga el secreto y despliega el Worker:
+
+```bash
+cd "C:\Users\Ulise\Desktop\strat qqq 38%\cripto-arbitraje"; powershell -ExecutionPolicy Bypass -File deploy\cloudflare_setup.ps1
+```
+
+4. Deshabilitar el workflow de GitHub Actions (si no, los dos escanean con estados
+   separados y las alertas llegan duplicadas): Actions > bot arbitraje > ... > Disable workflow.
+
+Ver que está vivo: la URL del Worker (la imprime `wrangler deploy`) con `/ultimo` muestra la
+última corrida, cuánto tardó y cuántas alertas mandó. Logs en vivo: `npx wrangler tail` desde
+la carpeta `cloudflare`.
+
+Límites del plan gratuito que importan: 100.000 ejecuciones por día (usamos 1.440) y 1.000
+escrituras de KV por día (el Worker escribe solo cuando el estado cambia o cada 10 minutos).
+
+Para actualizar después de cambiar código: `vercel --prod --yes` (la lógica está en Vercel);
+el Worker solo cambia si tocás `cloudflare/worker.js`, y entonces `npx wrangler deploy`.
 
 ## Comandos al instante: webhook en Vercel (gratis, sin tarjeta; activo)
 

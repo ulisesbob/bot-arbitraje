@@ -114,15 +114,21 @@ class Cooldown:
     """Evita repetir la misma alerta (par + exchanges) durante N segundos.
     Si se le da un archivo, recuerda las alertas entre reinicios."""
 
-    def __init__(self, segundos: int, archivo: Path | None = None):
+    def __init__(self, segundos: int, archivo: Path | None = None, estado: dict | None = None):
+        """archivo: persiste en disco (bot local, Actions). estado: dict en memoria que se
+        modifica en el lugar (api/scan.py, donde el estado viaja en la peticion)."""
         self.segundos = segundos
         self.archivo = archivo
-        self._ultimo: dict[str, float] = {}
-        if archivo and archivo.exists():
+        self._ultimo: dict[str, float] = estado if estado is not None else {}
+        if archivo and archivo.exists() and estado is None:
             try:
                 self._ultimo = json.loads(archivo.read_text(encoding="utf-8"))
             except (OSError, ValueError):
                 self._ultimo = {}
+
+    @property
+    def estado(self) -> dict:
+        return self._ultimo
 
     def permitir(self, par: str, comprar_en: str, vender_en: str, ahora: float) -> bool:
         clave = f"{par}|{comprar_en}|{vender_en}"
@@ -130,10 +136,11 @@ class Cooldown:
         if previo is not None and ahora - previo < self.segundos:
             return False
         self._ultimo[clave] = ahora
+        for k in [k for k, v in self._ultimo.items() if ahora - v >= self.segundos]:
+            del self._ultimo[k]  # olvidar las vencidas para que el estado no crezca
         if self.archivo:
-            vivas = {k: v for k, v in self._ultimo.items() if ahora - v < self.segundos}
             try:
-                self.archivo.write_text(json.dumps(vivas), encoding="utf-8")
+                self.archivo.write_text(json.dumps(self._ultimo), encoding="utf-8")
             except OSError as e:
                 print(f"[cooldown] no pude guardar {self.archivo.name}: {e}")
         return True
@@ -325,7 +332,11 @@ def texto_plano(html: str) -> str:
     return html
 
 
-def pasada(cfg: dict, cooldown: Cooldown, mostrar_resumen: bool = True) -> list[Oportunidad]:
+def pasada(cfg: dict, cooldown: Cooldown, mostrar_resumen: bool = True,
+           rulos_abiertos: dict | None = None) -> list[Oportunidad]:
+    """Una pasada completa: arbitraje simple + rulos.
+    rulos_abiertos: estado de rulos en memoria (se modifica en el lugar); si es None se
+    usa el archivo rulos.json."""
     ahora = time.time()
     excluir = set(cfg["excluir_exchanges"])
     alertadas = []
@@ -359,7 +370,12 @@ def pasada(cfg: dict, cooldown: Cooldown, mostrar_resumen: bool = True) -> list[
         except Exception as e:  # noqa: BLE001
             print(f"[rulos] error consultando el dolar: {e}")
             dolar = None
-        rulos.correr(cfg, cotizaciones, dolar, Path(__file__).with_name("rulos.json"), ahora)
+        if rulos_abiertos is None:
+            rulos.correr(cfg, cotizaciones, dolar, Path(__file__).with_name("rulos.json"), ahora)
+        else:
+            _, _, nuevo = rulos.procesar(cfg, cotizaciones, dolar, rulos_abiertos, ahora)
+            rulos_abiertos.clear()
+            rulos_abiertos.update(nuevo)
     return alertadas
 
 

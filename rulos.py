@@ -235,19 +235,17 @@ def formatear_listado(rulos: list[Rulo], umbral: float, n: int = 5) -> str:
 
 # ---------- orquestacion ----------
 
-def correr(cfg: dict, cotizaciones: dict[str, dict | None], dolar: dict | None, estado_path: Path,
-           ahora: float | None = None) -> tuple[list[Rulo], list[dict]]:
-    """Calcula rulos, compara con el estado anterior, manda alertas y guarda el estado.
-    Devuelve (nuevos, cerrados)."""
+def procesar(cfg: dict, cotizaciones: dict[str, dict | None], dolar: dict | None, abiertos: dict,
+             ahora: float | None = None) -> tuple[list[Rulo], list[dict], dict]:
+    """Calcula rulos, compara con `abiertos` (estado anterior), manda alertas.
+    Devuelve (nuevos, cerrados, estado_nuevo). No toca el disco."""
     ahora = ahora or time.time()
     aristas = construir_aristas(cotizaciones, dolar, cfg, ahora)
     rulos = buscar_rulos(aristas, cfg.get("max_patas", 4))
     if rulos:
         m = rulos[0]
         print(f"[rulos] mejor: {m.ruta} {m.rendimiento_pct:+.2f}%")
-    abiertos = cargar_estado(estado_path)
     nuevos, cerrados, estado = detectar_cambios(abiertos, rulos, cfg["umbral_rulo_pct"], ahora)
-    guardar_estado(estado_path, estado)
     tok, chat = cfg["telegram_token"], cfg["telegram_chat_id"]
     if cerrados:
         msg = formatear_cerrados(cerrados)
@@ -257,4 +255,12 @@ def correr(cfg: dict, cotizaciones: dict[str, dict | None], dolar: dict | None, 
         msg = formatear_nuevos(nuevos, cfg["volumen_rulo"])
         print("\n" + a.texto_plano(msg) + "\n")
         a.enviar_telegram(tok, chat, msg)
+    return nuevos, cerrados, estado
+
+
+def correr(cfg: dict, cotizaciones: dict[str, dict | None], dolar: dict | None, estado_path: Path,
+           ahora: float | None = None) -> tuple[list[Rulo], list[dict]]:
+    """Como procesar(), pero leyendo y guardando el estado en un archivo (bot local, Actions)."""
+    nuevos, cerrados, estado = procesar(cfg, cotizaciones, dolar, cargar_estado(estado_path), ahora)
+    guardar_estado(estado_path, estado)
     return nuevos, cerrados

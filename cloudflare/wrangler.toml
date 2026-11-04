@@ -1,0 +1,18 @@
+name = "bot-arbitraje-reloj"
+main = "worker.js"
+compatibility_date = "2026-10-01"
+
+# Cada minuto. Plan gratuito de Cloudflare: cron triggers incluidos.
+[triggers]
+crons = ["* * * * *"]
+
+[vars]
+SCAN_URL = "https://bot-arbitraje-xi.vercel.app/api/scan"
+
+# El id lo completa deploy/cloudflare_setup.ps1 al crear el namespace.
+[[kv_namespaces]]
+binding = "ESTADO"
+id = "REEMPLAZAR_ID"
+
+[observability]
+enabled = true

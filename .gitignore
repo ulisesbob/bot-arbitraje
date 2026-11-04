@@ -9,3 +9,7 @@ __pycache__/
 .vercel
 .env*.local
 rulos.json
+
+# Cloudflare
+.wrangler/
+node_modules/
