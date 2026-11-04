@@ -19,7 +19,15 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 import arbitraje as a  # noqa: E402
 import comandos as c  # noqa: E402
 
-VERSION = "2"  # subir cuando cambie el webhook, para verificar que version esta desplegada
+VERSION = "3"  # subir cuando cambie el webhook, para verificar que version esta desplegada
+
+
+def _huella(valor: str) -> dict:
+    """Largo y hash corto de un valor, para comparar sin exponerlo."""
+    import hashlib
+    limpio = (valor or "").strip()
+    return {"largo": len(limpio), "largo_crudo": len(valor or ""),
+            "sha8": hashlib.sha256(limpio.encode()).hexdigest()[:8]}
 
 
 def procesar(update: dict) -> str:
@@ -47,12 +55,25 @@ class handler(BaseHTTPRequestHandler):  # noqa: N801  (nombre que exige Vercel)
         self.wfile.write(datos)
 
     def do_GET(self) -> None:  # noqa: N802
-        self._responder(200, f"bot arbitraje: webhook activo (v{VERSION})")
+        # Diagnostico sin revelar secretos: largos y huella (sha256 corto) de lo configurado.
+        cfg = a.cargar_config(escribir=False)
+        self._responder(200, json.dumps({
+            "version": VERSION,
+            "secreto": _huella(os.environ.get("WEBHOOK_SECRET", "")),
+            "token": _huella(cfg["telegram_token"]),
+            "chat_id": _huella(cfg["telegram_chat_id"]),
+        }))
 
     def do_POST(self) -> None:  # noqa: N802
         secreto = os.environ.get("WEBHOOK_SECRET", "").strip()
-        if secreto and self.headers.get("X-Telegram-Bot-Api-Secret-Token") != secreto:
-            self._responder(403, "secreto invalido")
+        recibido = (self.headers.get("X-Telegram-Bot-Api-Secret-Token") or "").strip()
+        if secreto and recibido != secreto:
+            self._responder(403, json.dumps({
+                "error": "secreto invalido",
+                "esperado": _huella(secreto),
+                "recibido": _huella(recibido),
+                "headers": sorted(k.lower() for k in self.headers.keys()),
+            }))
             return
         largo = int(self.headers.get("Content-Length") or 0)
         try:
