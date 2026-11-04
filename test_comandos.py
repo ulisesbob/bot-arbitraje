@@ -34,7 +34,7 @@ def test_moneda_ordena_compra_y_venta_y_descarta_viejos():
     # mas barato para comprar: binancep2p (1669), luego okexp2p (1672), fiwind (1680)
     assert txt.index("1. binancep2p") < txt.index("2. okexp2p") < txt.index("3. fiwind")
     # mejor para vender: okexp2p (1669) primero
-    assert re.search(r"1\. okexp2p\s+1,669\.00", txt)
+    assert re.search(r"1\. okexp2p \U0001f465\s+1,669\.00", txt)  # P2P va marcado
     assert "Spread entre ambos: +0.00%" in txt
 
 
@@ -44,7 +44,7 @@ def test_dolar_ordena_de_barato_a_caro_y_marca_el_mejor():
     assert "Blue" in filas[0] and "⭐" in filas[0]
     assert "Oficial" in filas[1]
     assert "Tarjeta" in filas[5]
-    assert re.search(r"USDT\s+binancep2p\s+\$\s+1,669\.00", txt)
+    assert re.search(r"USDT\s+binancep2p \U0001f465\s+\$\s+1,669\.00", txt)
 
 
 def test_dolar_sin_datos():
