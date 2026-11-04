@@ -123,3 +123,25 @@ def test_reintenta_ante_429(monkeypatch):
     monkeypatch.setattr(a.time, "sleep", lambda s: None)
     assert "ok" in a.obtener_cotizaciones("usdt/ars", 1000)
     assert len(intentos) == 3
+
+
+def test_desvio_mas_estricto_en_dolares():
+    cfg = dict(a.CONFIG_DEFAULT)
+    assert a.desvio_para("btc/usd", cfg) == 3.0 and a.desvio_para("btc/ars", cfg) == 5.0
+    # xapo 4.5% por debajo de la mediana: pasa con 5%, no con 3%
+    q = lambda ask, bid: {"totalAsk": ask, "totalBid": bid, "time": NOW}
+    cot = {"xapo": q(80400, 80500), "fiwind": q(85500, 84500), "decrypto": q(85600, 81300),
+           "letsbit": q(86100, 83600), "nexo": q(85000, 84000)}
+    assert "xapo" in a.filtrar_cotizaciones(cot, 600, NOW, max_desvio_pct=5.0)
+    assert "xapo" not in a.filtrar_cotizaciones(cot, 600, NOW, max_desvio_pct=3.0)
+
+
+def test_alerta_incluye_otras_opciones():
+    q = lambda ask, bid: {"totalAsk": ask, "totalBid": bid, "time": NOW}
+    validas = {"a": q(100, 99), "b": q(101, 104), "c": q(102, 103), "d": q(103, 102)}
+    o = a.Oportunidad("usdt/ars", "a", 100, "b", 104, 4.0)
+    alt = a.alternativas(validas, o)
+    assert alt == ([("b", 101), ("c", 102)], [("c", 103), ("d", 102)])
+    txt = a.texto_plano(a.formatear(o, 1000, False, alt))
+    assert "Otras opciones" in txt and "comprar  b" in txt and "vender   c" in txt
+    assert "Otras opciones" not in a.texto_plano(a.formatear(o, 1000, False))

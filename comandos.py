@@ -48,6 +48,10 @@ def resp_ayuda() -> str:
         out.append(f"<b>{titulo}</b>")
         out += [f"/{c} — {desc[c]}" for c in cmds]
         out.append("")
+    extras = sorted({p.split("/")[0] for p in a.CONFIG_DEFAULT["pares"]} - set(MONEDAS))
+    if extras:
+        out.append("También: " + " ".join(f"/{c}" for c in extras))
+        out.append("")
     out.append("<i>Las alertas automáticas llegan solas cuando un spread supera el umbral.</i>")
     return "\n".join(out)
 
@@ -85,20 +89,21 @@ def _bloque_fiat(fiat: str, cot: dict | None, ahora: float, max_antiguedad: int,
 
 def resp_moneda(coin: str, cot: dict, fiat: str = "ARS", ahora: float | None = None,
                 max_antiguedad: int = 600, max_desvio_pct: float = 5.0, n: int = 3,
-                excluir: set | None = None, cot_usd: dict | None = None) -> str:
+                excluir: set | None = None, cot_usd: dict | None = None,
+                max_desvio_usd_pct: float | None = None) -> str:
     """Una moneda contra `fiat`; si se pasa cot_usd, agrega el bloque en dólares."""
     ahora = ahora or time.time()
     nombre = MONEDAS.get(coin, coin.upper())
     icono = a.ICONO.get(coin, "\U0001fa99")
-    bloques = [(fiat, cot)]
+    bloques = [(fiat, cot, max_desvio_pct)]
     if cot_usd is not None and fiat != "USD":
-        bloques.append(("USD", cot_usd))
+        bloques.append(("USD", cot_usd, max_desvio_usd_pct if max_desvio_usd_pct is not None else max_desvio_pct))
     out = [f"{icono} <b>{nombre}</b>", SEP]
     hay_p2p = False
-    for i, (f, c) in enumerate(bloques):
+    for i, (f, c, desvio) in enumerate(bloques):
         if i:
             out += ["", SEP]
-        lineas, p2p = _bloque_fiat(f, c, ahora, max_antiguedad, max_desvio_pct, n, excluir)
+        lineas, p2p = _bloque_fiat(f, c, ahora, max_antiguedad, desvio, n, excluir)
         out += lineas
         hay_p2p |= p2p
     out.append("<i>Precios con comisiones, según CriptoYa.</i>")
@@ -167,14 +172,18 @@ def resp_dolar(dolar: dict, stables: dict[str, dict], ahora: float | None = None
     return "\n".join(out)
 
 
-def resp_arbitraje(resultados: list[tuple[str, a.Oportunidad | None]], umbral: float) -> str:
+def resp_arbitraje(resultados: list[tuple[str, a.Oportunidad | None]], umbral: float, n: int = 10) -> str:
     con_datos = sorted((r for r in resultados if r[1] is not None), key=lambda r: -r[1].spread_pct)
     sin_datos = [par for par, o in resultados if o is None]
     out = [f"\U0001f4ca <b>Spreads ahora</b> — alerta si supera <b>{umbral}%</b>", SEP]
+    resto = con_datos[n:]
+    con_datos = con_datos[:n]
     for par, o in con_datos:
         out.append(f"{_semaforo(o.spread_pct, umbral)} <b>{par.upper()}</b>  <b>{o.spread_pct:+.2f}%</b>")
         out.append(f"<pre>  comprar {a.marcar(o.comprar_en):<15} {a.precio(o.precio_compra):>14}\n"
                    f"  vender  {a.marcar(o.vender_en):<15} {a.precio(o.precio_venta):>14}</pre>")
+    if resto:
+        out.append("<i>" + ", ".join(f"{p.upper()} {o.spread_pct:+.2f}%" for p, o in resto) + "</i>")
     if sin_datos:
         out.append("⚪ sin datos: " + ", ".join(p.upper() for p in sin_datos))
     out.append("<i>\U0001f7e2 supera el umbral · \U0001f7e1 positivo · \U0001f534 negativo</i>")
@@ -229,11 +238,14 @@ def manejar(texto: str, cfg: dict, persistente: bool = True) -> str:
     try:
         if cmd in ("start", "ayuda", "help"):
             return resp_ayuda()
-        if cmd in MONEDAS:
-            descargas = _descargar_varios([f"{cmd}/ars", f"{cmd}/usd"], cfg["volumen"])
+        monedas_cfg = {p.split("/")[0] for p in cfg["pares"]}
+        if cmd in MONEDAS or cmd in monedas_cfg:
+            pares = [f"{cmd}/ars"] + ([f"{cmd}/usd"] if f"{cmd}/usd" in cfg["pares"] or cmd in MONEDAS else [])
+            descargas = _descargar_varios(pares, cfg["volumen"])
             return resp_moneda(cmd, descargas.get(f"{cmd}/ars") or {}, "ARS",
                                max_antiguedad=cfg["max_antiguedad_seg"], max_desvio_pct=cfg["max_desvio_pct"],
-                               excluir=excluir, cot_usd=descargas.get(f"{cmd}/usd") or {})
+                               excluir=excluir, cot_usd=descargas.get(f"{cmd}/usd") if len(pares) > 1 else None,
+                               max_desvio_usd_pct=cfg.get("max_desvio_usd_pct"))
         if cmd == "dolar":
             descargas = _descargar_varios([f"{c}/{fiat}" for c in ("usdt", "usdc", "dai")], cfg["volumen"])
             stables = {par.split("/")[0]: cot for par, cot in descargas.items() if cot}
@@ -247,7 +259,7 @@ def manejar(texto: str, cfg: dict, persistente: bool = True) -> str:
                     res.append((par, None))
                     continue
                 ops = a.detectar_oportunidades(cot, -100, cfg["max_antiguedad_seg"], ahora, par,
-                                               excluir, cfg["max_desvio_pct"])
+                                               excluir, a.desvio_para(par, cfg))
                 res.append((par, ops[0] if ops else None))
             return resp_arbitraje(res, cfg["umbral_pct"])
         if cmd == "rulos":

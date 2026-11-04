@@ -74,7 +74,7 @@ def construir_aristas(cotizaciones: dict[str, dict | None], dolar: dict | None, 
         COIN, FIAT = coin.upper(), fiat.upper()
         simbolo = "$" if fiat == "ars" else "US$"
         con = "pesos" if fiat == "ars" else "dólares"
-        validas = a.filtrar_cotizaciones(cot, cfg["max_antiguedad_seg"], ahora, excluir, cfg["max_desvio_pct"])
+        validas = a.filtrar_cotizaciones(cot, cfg["max_antiguedad_seg"], ahora, excluir, a.desvio_para(par, cfg))
         for ex, q in validas.items():
             ask, bid = q["totalAsk"], q["totalBid"]
             aristas.append(Arista(FIAT, COIN, 1 / ask, ex, ask, simbolo,

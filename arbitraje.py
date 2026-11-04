@@ -28,7 +28,9 @@ API = "https://criptoya.com/api/{coin}/{fiat}/{volumen}"
 CONFIG_PATH = Path(__file__).with_name("config.json")
 
 CONFIG_DEFAULT = {
-    "pares": ["usdt/ars", "usdc/ars", "dai/ars", "btc/ars", "eth/ars", "usdt/usd", "usdc/usd", "btc/usd", "eth/usd"],
+    "pares": ["usdt/ars", "usdc/ars", "dai/ars", "btc/ars", "eth/ars", "usdt/usd", "usdc/usd", "btc/usd", "eth/usd",
+              "sol/ars", "xrp/ars", "bnb/ars", "ada/ars", "doge/ars", "ltc/ars", "pol/ars", "avax/ars", "dot/ars",
+              "trx/ars", "link/ars"],
     "volumen": 1000,
     "umbral_pct": 1.5,
     "intervalo_seg": 60,
@@ -36,6 +38,7 @@ CONFIG_DEFAULT = {
     "cooldown_seg": 900,
     "excluir_exchanges": [],
     "max_desvio_pct": 5.0,
+    "max_desvio_usd_pct": 3.0,
     "incluir_pasos": True,
     "rulos": True,
     "umbral_rulo_pct": 2.0,
@@ -69,6 +72,16 @@ AVISO_P2P = ("\U0001f465 <b>P2P</b>: es el precio publicado por una persona, no 
 
 def marcar(nombre: str) -> str:
     return nombre + (" \U0001f465" if es_p2p(nombre) else "")
+
+
+def desvio_para(par: str, cfg: dict) -> float:
+    """Tolerancia de desvio respecto de la mediana segun el fiat del par. En los pares en
+    dolares es mas estricta: ahi conviven dolares locales y dolares de cuentas en el exterior
+    (Xapo, Astropay) que cotizan 4-6% mas bajo sin que eso sea arbitrable."""
+    fiat = par.lower().split("/")[-1]
+    if fiat == "usd":
+        return cfg.get("max_desvio_usd_pct", cfg["max_desvio_pct"])
+    return cfg["max_desvio_pct"]
 
 
 def esta_excluido(nombre: str, excluir: set) -> bool:
@@ -320,7 +333,15 @@ def ciclo(cfg: dict, cooldown: Cooldown, sin_comandos: bool = False) -> None:
         confirmar_mensajes(cfg["telegram_token"], offset)
 
 
-def formatear(o: Oportunidad, volumen: float, incluir_pasos: bool = True) -> str:
+def alternativas(validas: dict, o: Oportunidad, n: int = 2) -> tuple[list, list]:
+    """Otros lugares donde comprar (asks mas baratos) y vender (bids mas altos), sin los elegidos."""
+    compras = sorted(((ex, q["totalAsk"]) for ex, q in validas.items() if ex != o.comprar_en), key=lambda x: x[1])[:n]
+    ventas = sorted(((ex, q["totalBid"]) for ex, q in validas.items() if ex != o.vender_en), key=lambda x: -x[1])[:n]
+    return compras, ventas
+
+
+def formatear(o: Oportunidad, volumen: float, incluir_pasos: bool = True,
+              alternativas: tuple[list, list] | None = None) -> str:
     coin, fiat = o.par.upper().split("/")
     ganancia = volumen * o.spread_pct / 100
     c, v = marcar(o.comprar_en), marcar(o.vender_en)
@@ -335,7 +356,14 @@ def formatear(o: Oportunidad, volumen: float, incluir_pasos: bool = True) -> str
         f"\U0001f4b0 Ganancia bruta: <b>~{ganancia:,.0f} {fiat}</b> por cada {volumen:,.0f} {fiat}\n"
         f"<i>Precios con comisiones de CriptoYa, sin transferencias ni retiros.</i>"
     )
-    if es_p2p(o.comprar_en) or es_p2p(o.vender_en):
+    compras, ventas = alternativas or ([], [])
+    if compras or ventas:
+        w = max(len(marcar(ex)) for ex, _ in compras + ventas)
+        filas = [f"comprar  {marcar(ex):<{w}}  {precio(p)}" for ex, p in compras]
+        filas += [f"vender   {marcar(ex):<{w}}  {precio(p)}" for ex, p in ventas]
+        msg += "\n\U0001f501 <b>Otras opciones</b>\n<pre>" + "\n".join(filas) + "</pre>"
+    p2p = [o.comprar_en, o.vender_en] + [ex for ex, _ in compras + ventas]
+    if any(es_p2p(x) for x in p2p):
         msg += "\n" + AVISO_P2P
     if incluir_pasos:
         msg += pasos(o)
@@ -361,9 +389,10 @@ def pasada(cfg: dict, cooldown: Cooldown, mostrar_resumen: bool = True,
         cot = cotizaciones.get(par)
         if cot is None:
             continue
-        ops = detectar_oportunidades(cot, cfg["umbral_pct"], cfg["max_antiguedad_seg"], ahora, par, excluir, cfg["max_desvio_pct"])
+        desvio = desvio_para(par, cfg)
+        ops = detectar_oportunidades(cot, cfg["umbral_pct"], cfg["max_antiguedad_seg"], ahora, par, excluir, desvio)
         if mostrar_resumen:
-            todas = detectar_oportunidades(cot, -100, cfg["max_antiguedad_seg"], ahora, par, excluir, cfg["max_desvio_pct"])
+            todas = detectar_oportunidades(cot, -100, cfg["max_antiguedad_seg"], ahora, par, excluir, desvio)
             if todas:
                 m = todas[0]
                 print(f"[{par}] mejor spread {m.spread_pct:+.2f}%  "
@@ -375,7 +404,8 @@ def pasada(cfg: dict, cooldown: Cooldown, mostrar_resumen: bool = True,
         o = ops[0]  # solo la mejor combinacion por par, para no spamear
         if not cooldown.permitir(par, o.comprar_en, o.vender_en, ahora):
             continue
-        msg = formatear(o, cfg["volumen"], cfg["incluir_pasos"])
+        validas = filtrar_cotizaciones(cot, cfg["max_antiguedad_seg"], ahora, excluir, desvio)
+        msg = formatear(o, cfg["volumen"], cfg["incluir_pasos"], alternativas(validas, o))
         print("\n" + texto_plano(msg) + "\n")
         enviar_telegram(cfg["telegram_token"], cfg["telegram_chat_id"], msg)
         alertadas.append(o)
