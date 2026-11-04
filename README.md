@@ -35,6 +35,10 @@ Se crea solo la primera vez. Campos:
 | `cooldown_seg` | no repite la misma alerta (par + exchanges) durante este tiempo; se guarda en `cooldown.json` y sobrevive reinicios | 900 |
 | `excluir_exchanges` | lista de exchanges a ignorar en alertas y comandos | `["binancep2p"]` |
 | `max_desvio_pct` | descarta precios alejados más de esto de la mediana (ofertas basura de P2P); `0` apaga el filtro | 5.0 |
+| `rulos` | buscar rulos de 3 o 4 patas (pesos → dólar/stablecoin → … → pesos) | `true` |
+| `umbral_rulo_pct` | rendimiento mínimo de un rulo para alertar | 2.0 |
+| `volumen_rulo` | monto en pesos sobre el que se calcula la ganancia del rulo | 100000 |
+| `max_patas` | largo máximo del rulo | 4 |
 | `telegram_token` / `telegram_chat_id` | credenciales de Telegram | vacío |
 
 Si dejás esos campos vacíos, se usan las variables de entorno `TELEGRAM_BOT_TOKEN` y
@@ -61,6 +65,7 @@ Con Telegram configurado, el bot también responde mensajes (tipeá `/` y aparec
 | Comando | Qué responde |
 |---|---|
 | `/arbitraje` | mejor spread de cada par ahora, marcando los que superan el umbral |
+| `/rulos` | los 5 mejores rulos de 3 o 4 patas ahora, superen o no el umbral |
 | `/dolar` | todas las formas de comprar dólares ordenadas de más barata a más cara (oficial, blue, MEP, CCL, cripto, tarjeta) y la stablecoin más barata por exchange |
 | `/btc` `/eth` `/usdt` `/usdc` `/dai` | los 3 exchanges más baratos para comprar y los 3 mejores para vender, en pesos |
 | `/umbral` | muestra el umbral de alerta; `/umbral 1.5` lo cambia y lo guarda en `config.json` |
@@ -81,6 +86,22 @@ ventana, deja de vigilar. Opciones para que corra solo:
 - **Un servidor gratuito o barato** (Oracle Cloud Free Tier, Fly.io, Railway, una Raspberry
   Pi en tu casa). Copiás la carpeta, instalás Python y lo corrés igual que acá.
   No usa ninguna librería externa, así que no hay nada más que instalar.
+
+## Rulos (ciclos de 3 o 4 patas)
+
+Además del arbitraje simple, el bot busca ciclos que empiezan y terminan en pesos pasando
+por dólares y stablecoins, por ejemplo: comprar dólar oficial en el banco, con esos dólares
+comprar USDT en un exchange, y vender el USDT por pesos en otro. Usa el dólar oficial y el
+MEP de CriptoYa como patas bancarias, y las cotizaciones de USDT, USDC y DAI contra pesos
+y contra dólares como patas cripto. Para cada secuencia elige el mejor exchange por pata.
+
+Cuando un rulo supera `umbral_rulo_pct` manda una alerta con cada pata, su precio, si es
+P2P, y advertencias sobre transferencias y la pata bancaria. Cuando deja de superar el
+umbral avisa que se cerró, a cuánto llegó y cuánto duró. El estado vive en `rulos.json`.
+
+Advertencia: estos rulos muestran precios publicados, no ejecuciones garantizadas. Los P2P
+dependen de encontrar contraparte, mover dólares entre un exchange y un banco o broker tiene
+costos y demoras, y la compra de dólar oficial tiene reglas y límites propios.
 
 ## Qué significa la alerta
 

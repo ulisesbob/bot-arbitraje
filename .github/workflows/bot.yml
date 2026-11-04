@@ -28,6 +28,7 @@ jobs:
           path: |
             cooldown.json
             config.json
+            rulos.json
           key: estado-${{ github.run_id }}
           restore-keys: estado-
 
@@ -45,4 +46,5 @@ jobs:
           path: |
             cooldown.json
             config.json
+            rulos.json
           key: estado-${{ github.run_id }}

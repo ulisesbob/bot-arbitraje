@@ -7,13 +7,12 @@ from __future__ import annotations
 
 import json
 import time
-import urllib.request
-from concurrent.futures import ThreadPoolExecutor
 
 import arbitraje as a
 
 COMANDOS = [
     ("arbitraje", "mejores spreads entre exchanges ahora"),
+    ("rulos", "mejores rulos de 3 o 4 patas (pesos > dolar/stable > pesos)"),
     ("dolar", "la forma mas barata de comprar dolares"),
     ("btc", "donde comprar y vender Bitcoin mas barato"),
     ("eth", "donde comprar y vender Ethereum mas barato"),
@@ -39,7 +38,7 @@ def _semaforo(spread: float, umbral: float) -> str:
 
 def resp_ayuda() -> str:
     grupos = [
-        ("\U0001f4ca Mercado", ["arbitraje", "dolar"]),
+        ("\U0001f4ca Mercado", ["arbitraje", "rulos", "dolar"]),
         ("\U0001fa99 Por moneda", ["btc", "eth", "usdt", "usdc", "dai"]),
         ("⚙️ Configuración", ["umbral", "ayuda"]),
     ]
@@ -180,21 +179,19 @@ def resp_umbral(cfg: dict, arg: str | None, persistente: bool = True) -> str:
 
 # ---------- descarga + despacho ----------
 
-def obtener_dolar() -> dict:
-    req = urllib.request.Request("https://criptoya.com/api/dolar", headers={"User-Agent": "arbitraje-bot/1.0"})
-    with urllib.request.urlopen(req, timeout=20) as r:
-        return json.loads(r.read().decode("utf-8"))
+obtener_dolar = a.obtener_dolar
+_descargar_varios = a.descargar_varios
 
 
-def _descargar_varios(pares: list[str], volumen: float) -> dict[str, dict | None]:
-    """Descarga varios pares en paralelo. None donde fallo."""
-    def uno(par):
-        try:
-            return par, a.obtener_cotizaciones(par, volumen)
-        except Exception:  # noqa: BLE001
-            return par, None
-    with ThreadPoolExecutor(max_workers=min(8, len(pares))) as ex:
-        return dict(ex.map(uno, pares))
+def resp_rulos(cfg: dict) -> str:
+    import rulos
+    cotizaciones = _descargar_varios(cfg["pares"], cfg["volumen"])
+    try:
+        dolar = obtener_dolar()
+    except Exception:  # noqa: BLE001
+        dolar = None
+    aristas = rulos.construir_aristas(cotizaciones, dolar, cfg)
+    return rulos.formatear_listado(rulos.buscar_rulos(aristas, cfg.get("max_patas", 4)), cfg["umbral_rulo_pct"])
 
 
 def manejar(texto: str, cfg: dict, persistente: bool = True) -> str:
@@ -227,6 +224,8 @@ def manejar(texto: str, cfg: dict, persistente: bool = True) -> str:
                                                excluir, cfg["max_desvio_pct"])
                 res.append((par, ops[0] if ops else None))
             return resp_arbitraje(res, cfg["umbral_pct"])
+        if cmd == "rulos":
+            return resp_rulos(cfg)
         if cmd == "umbral":
             return resp_umbral(cfg, arg, persistente)
     except Exception as e:  # noqa: BLE001

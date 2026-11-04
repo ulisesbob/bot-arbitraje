@@ -10,3 +10,4 @@ __pycache__/
 Dockerfile
 .dockerignore
 fly.toml
+rulos.json

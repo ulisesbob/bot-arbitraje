@@ -37,6 +37,10 @@ CONFIG_DEFAULT = {
     "excluir_exchanges": ["binancep2p"],
     "max_desvio_pct": 5.0,
     "incluir_pasos": True,
+    "rulos": True,
+    "umbral_rulo_pct": 2.0,
+    "volumen_rulo": 100000,
+    "max_patas": 4,
     "telegram_token": "",
     "telegram_chat_id": "",
 }
@@ -160,6 +164,26 @@ def obtener_cotizaciones(par: str, volumen: float) -> dict:
     req = urllib.request.Request(url, headers={"User-Agent": "arbitraje-bot/1.0"})
     with urllib.request.urlopen(req, timeout=20) as r:
         return json.loads(r.read().decode("utf-8"))
+
+
+def obtener_dolar() -> dict:
+    req = urllib.request.Request("https://criptoya.com/api/dolar", headers={"User-Agent": "arbitraje-bot/1.0"})
+    with urllib.request.urlopen(req, timeout=20) as r:
+        return json.loads(r.read().decode("utf-8"))
+
+
+def descargar_varios(pares: list[str], volumen: float) -> dict[str, dict | None]:
+    """Descarga varios pares en paralelo. None donde fallo."""
+    from concurrent.futures import ThreadPoolExecutor
+
+    def uno(par):
+        try:
+            return par, obtener_cotizaciones(par, volumen)
+        except Exception as e:  # noqa: BLE001
+            print(f"[{par}] error consultando CriptoYa: {e}")
+            return par, None
+    with ThreadPoolExecutor(max_workers=min(8, max(1, len(pares)))) as ex:
+        return dict(ex.map(uno, pares))
 
 
 def enviar_telegram(token: str, chat_id: str, texto: str) -> bool:
@@ -290,11 +314,10 @@ def pasada(cfg: dict, cooldown: Cooldown, mostrar_resumen: bool = True) -> list[
     ahora = time.time()
     excluir = set(cfg["excluir_exchanges"])
     alertadas = []
+    cotizaciones = descargar_varios(cfg["pares"], cfg["volumen"])
     for par in cfg["pares"]:
-        try:
-            cot = obtener_cotizaciones(par, cfg["volumen"])
-        except Exception as e:  # noqa: BLE001
-            print(f"[{par}] error consultando CriptoYa: {e}")
+        cot = cotizaciones.get(par)
+        if cot is None:
             continue
         ops = detectar_oportunidades(cot, cfg["umbral_pct"], cfg["max_antiguedad_seg"], ahora, par, excluir, cfg["max_desvio_pct"])
         if mostrar_resumen:
@@ -314,6 +337,14 @@ def pasada(cfg: dict, cooldown: Cooldown, mostrar_resumen: bool = True) -> list[
         print("\n" + texto_plano(msg) + "\n")
         enviar_telegram(cfg["telegram_token"], cfg["telegram_chat_id"], msg)
         alertadas.append(o)
+    if cfg.get("rulos"):
+        import rulos
+        try:
+            dolar = obtener_dolar()
+        except Exception as e:  # noqa: BLE001
+            print(f"[rulos] error consultando el dolar: {e}")
+            dolar = None
+        rulos.correr(cfg, cotizaciones, dolar, Path(__file__).with_name("rulos.json"), ahora)
     return alertadas
 
 
