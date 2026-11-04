@@ -134,7 +134,7 @@ def cargar_config(escribir: bool = True) -> dict:
     """escribir=False para entornos de solo lectura (Vercel): no crea config.json."""
     cfg = dict(CONFIG_DEFAULT)
     if CONFIG_PATH.exists():
-        cfg.update(json.loads(CONFIG_PATH.read_text(encoding="utf-8")))
+        cfg.update(json.loads(CONFIG_PATH.read_text(encoding="utf-8-sig")))  # -sig: tolera BOM de PowerShell
     elif escribir:
         CONFIG_PATH.write_text(json.dumps(CONFIG_DEFAULT, indent=2, ensure_ascii=False), encoding="utf-8")
         print(f"[info] cree {CONFIG_PATH.name} con valores por defecto, editalo a gusto")

@@ -19,6 +19,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 import arbitraje as a  # noqa: E402
 import comandos as c  # noqa: E402
 
+VERSION = "2"  # subir cuando cambie el webhook, para verificar que version esta desplegada
+
 
 def procesar(update: dict) -> str:
     """Devuelve una descripcion de lo que hizo (para el log)."""
@@ -45,7 +47,7 @@ class handler(BaseHTTPRequestHandler):  # noqa: N801  (nombre que exige Vercel)
         self.wfile.write(datos)
 
     def do_GET(self) -> None:  # noqa: N802
-        self._responder(200, "bot arbitraje: webhook activo")
+        self._responder(200, f"bot arbitraje: webhook activo (v{VERSION})")
 
     def do_POST(self) -> None:  # noqa: N802
         secreto = os.environ.get("WEBHOOK_SECRET", "").strip()
