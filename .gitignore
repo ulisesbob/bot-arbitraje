@@ -1,0 +1,7 @@
+# credenciales y estado local: nunca al repo
+config.json
+cooldown.json
+
+__pycache__/
+.pytest_cache/
+*.pyc

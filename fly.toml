@@ -1,0 +1,17 @@
+# Fly.io: proceso de fondo sin HTTP. Desplegar con:
+#   fly launch --no-deploy --copy-config   (una vez)
+#   fly secrets set TELEGRAM_BOT_TOKEN=... TELEGRAM_CHAT_ID=...
+#   fly deploy
+app = "bot-arbitraje"
+primary_region = "gru"
+
+[build]
+  dockerfile = "Dockerfile"
+
+[processes]
+  bot = "python arbitraje.py"
+
+[[vm]]
+  size = "shared-cpu-1x"
+  memory = "256mb"
+  processes = ["bot"]

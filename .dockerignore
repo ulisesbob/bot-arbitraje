@@ -1,0 +1,8 @@
+config.json
+cooldown.json
+test_*.py
+__pycache__/
+.pytest_cache/
+*.md
+*.bat
+deploy/

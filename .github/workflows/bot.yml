@@ -1,0 +1,42 @@
+name: bot arbitraje
+
+on:
+  schedule:
+    - cron: "*/10 * * * *"   # cada 10 minutos (GitHub puede demorarlo unos minutos mas)
+  workflow_dispatch:         # boton "Run workflow" para probar a mano
+
+concurrency:
+  group: bot-arbitraje
+  cancel-in-progress: false
+
+permissions:
+  actions: write   # para guardar el cache del cooldown
+  contents: read
+
+jobs:
+  ciclo:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+
+      # cooldown.json recuerda que alertas ya se mandaron, para no repetirlas cada 10 min
+      - name: Restaurar cooldown
+        uses: actions/cache/restore@v4
+        with:
+          path: cooldown.json
+          key: cooldown-${{ github.run_id }}
+          restore-keys: cooldown-
+
+      - name: Escanear y responder comandos
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: python3 arbitraje.py --ciclo
+
+      - name: Guardar cooldown
+        if: always()
+        uses: actions/cache/save@v4
+        with:
+          path: cooldown.json
+          key: cooldown-${{ github.run_id }}

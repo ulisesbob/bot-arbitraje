@@ -1,0 +1,16 @@
+[Unit]
+Description=Bot de alertas de arbitraje cripto (CriptoYa)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=bot
+WorkingDirectory=/opt/bot-arbitraje
+ExecStart=/usr/bin/python3 /opt/bot-arbitraje/arbitraje.py
+Restart=always
+RestartSec=10
+Environment=PYTHONUNBUFFERED=1
+
+[Install]
+WantedBy=multi-user.target
