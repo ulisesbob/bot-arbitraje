@@ -68,6 +68,9 @@ Con Telegram configurado, el bot también responde mensajes (tipeá `/` y aparec
 
 Solo responde al chat configurado en `telegram_chat_id`; a cualquier otro lo ignora.
 
+En el despliegue actual los comandos los responde al instante un webhook en Vercel y las
+alertas las manda GitHub Actions cada 10 minutos. Ver [DEPLOY.md](DEPLOY.md).
+
 ## ¿Tiene que estar la compu prendida?
 
 Sí: el bot es un proceso Python que corre en tu máquina. Si la apagás o cerrás la

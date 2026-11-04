@@ -34,6 +34,38 @@ git push
 Para pausarlo: Actions > bot arbitraje > "..." > Disable workflow. Para volver a correrlo
 en tu compu, deshabilitá el workflow primero: dos bots leyendo el mismo chat se pisan.
 
+## Comandos al instante: webhook en Vercel (gratis, sin tarjeta; activo)
+
+GitHub Actions solo corre cada 10 minutos, demasiado lento para contestar un `/dolar`.
+Por eso los comandos los atiende una función en Vercel ([api/telegram.py](api/telegram.py)):
+Telegram le manda cada mensaje por webhook y responde en alrededor de 1 segundo.
+GitHub Actions sigue haciendo solo las alertas (`--ciclo --sin-comandos`).
+
+Dónde está todo:
+- Proyecto: https://vercel.com/ulisesbobs-projects/bot-arbitraje
+- URL del webhook: https://bot-arbitraje-xi.vercel.app/api/telegram (un GET muestra la
+  versión desplegada y huellas de la configuración, sin exponer valores).
+- Variables: `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID`, `WEBHOOK_SECRET` (en Settings >
+  Environment Variables). El secreto también está en tu `config.json` local como `webhook_secret`.
+
+Para actualizar después de cambiar código (el push a GitHub NO redespliega Vercel solo):
+
+```bash
+vercel --prod --yes
+```
+
+Para configurar desde cero en otra máquina: `deploy/vercel_setup.ps1` carga las variables y
+despliega; después hay que registrar el webhook en Telegram con `setWebhook` (URL de arriba
+y `secret_token` igual a `webhook_secret`).
+
+Limitaciones de Vercel: no puede escribir archivos, así que `/umbral N` no guarda el cambio;
+el umbral se cambia en `CONFIG_DEFAULT` de `arbitraje.py` y se sube con push (para Actions)
+y `vercel --prod --yes` (para los comandos).
+
+Si alguna vez querés volver a leer mensajes desde Actions o desde tu compu, primero hay que
+borrar el webhook (`deleteWebhook`), porque mientras exista Telegram no entrega mensajes por
+`getUpdates`.
+
 ## Otras opciones (siempre prendido, alertas al minuto)
 
 Tres caminos, del más rápido al más barato. En todos, antes de arrancar apagá el bot
