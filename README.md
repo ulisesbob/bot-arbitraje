@@ -67,7 +67,7 @@ Con Telegram configurado, el bot también responde mensajes (tipeá `/` y aparec
 | `/arbitraje` | mejor spread de cada par ahora, marcando los que superan el umbral |
 | `/rulos` | los 5 mejores rulos de 3 o 4 patas ahora, superen o no el umbral |
 | `/dolar` | todas las formas de comprar dólares ordenadas de más barata a más cara (oficial, blue, MEP, CCL, cripto, tarjeta) y la stablecoin más barata por exchange |
-| `/btc` `/eth` `/usdt` `/usdc` `/dai` | los 3 exchanges más baratos para comprar y los 3 mejores para vender, en pesos |
+| `/btc` `/eth` `/usdt` `/usdc` `/dai` | los 3 exchanges más baratos para comprar y los 3 mejores para vender, en pesos y en dólares |
 | `/umbral` | muestra el umbral de alerta; `/umbral 1.5` lo cambia y lo guarda en `config.json` |
 | `/ayuda` | la lista de comandos |
 
