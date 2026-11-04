@@ -87,7 +87,7 @@ def test_exclusion_se_aplica_en_moneda_y_dolar():
     assert "binancep2p" not in txt and "1. okexp2p" in txt
     txt = a.texto_plano(c.resp_dolar(DOLAR, {"usdt": USDT}, ahora=NOW, excluir=ex))
     assert "binancep2p" not in txt and re.search(r"USDT\s+okexp2p", txt)
-    assert a.CONFIG_DEFAULT["excluir_exchanges"] == ["*p2p", "p2pme"]
+    assert a.CONFIG_DEFAULT["excluir_exchanges"] == []
 
 
 def test_patron_p2p_excluye_todos_los_p2p():
@@ -96,3 +96,15 @@ def test_patron_p2p_excluye_todos_los_p2p():
     assert not a.esta_excluido("binance", ex) and not a.esta_excluido("fiwind", ex)
     txt = a.texto_plano(c.resp_moneda("usdt", USDT, "ARS", ahora=NOW, excluir=ex))
     assert "p2p" not in txt and "1. fiwind" in txt
+
+
+def test_p2p_entra_marcado_con_advertencia():
+    o = a.Oportunidad("usdt/ars", "binancep2p", 1660, "fiwind", 1690, 1.8)
+    txt = a.texto_plano(a.formatear(o, 1000, incluir_pasos=False))
+    assert "binancep2p 👥" in txt and "P2P" in txt and "Verificá precio" in txt
+    sin = a.texto_plano(a.formatear(a.Oportunidad("usdt/ars", "ripio", 1660, "fiwind", 1690, 1.8), 1000, False))
+    assert "👥" not in sin and "P2P" not in sin
+    lst = a.texto_plano(c.resp_arbitraje([("usdt/ars", o)], umbral=1.0))
+    assert "binancep2p 👥" in lst and "P2P" in lst
+    mon = a.texto_plano(c.resp_moneda("usdt", USDT, "ARS", ahora=NOW))
+    assert "binancep2p 👥" in mon and "P2P" in mon

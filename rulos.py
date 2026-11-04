@@ -38,7 +38,7 @@ class Arista:
 
     @property
     def p2p(self) -> bool:
-        return self.exchange.endswith("p2p")
+        return a.es_p2p(self.exchange)
 
 
 @dataclass

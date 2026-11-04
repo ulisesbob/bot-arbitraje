@@ -62,12 +62,12 @@ def resp_moneda(coin: str, cot: dict, fiat: str = "ARS", ahora: float | None = N
         return f"No hay cotizaciones válidas de {nombre} ahora."
     compra = sorted(validas.items(), key=lambda kv: kv[1]["totalAsk"])[:n]
     venta = sorted(validas.items(), key=lambda kv: -kv[1]["totalBid"])[:n]
-    ancho = max(len(ex) for ex, _ in compra + venta)
+    ancho = max(len(a.marcar(ex)) for ex, _ in compra + venta)
     icono = a.ICONO.get(coin, "\U0001fa99")
 
     def tabla(filas, campo):
         return "<pre>" + "\n".join(
-            f"{i + 1}. {ex:<{ancho}}  {a.precio(q[campo]):>14}" for i, (ex, q) in enumerate(filas)
+            f"{i + 1}. {a.marcar(ex):<{ancho}}  {a.precio(q[campo]):>14}" for i, (ex, q) in enumerate(filas)
         ) + "</pre>"
 
     spread = (venta[0][1]["totalBid"] - compra[0][1]["totalAsk"]) / compra[0][1]["totalAsk"] * 100
@@ -81,6 +81,8 @@ def resp_moneda(coin: str, cot: dict, fiat: str = "ARS", ahora: float | None = N
         f"↔️ Spread entre ambos: <b>{spread:+.2f}%</b>",
         "<i>Precios con comisiones, según CriptoYa.</i>",
     ]
+    if any(a.es_p2p(ex) for ex, _ in compra + venta):
+        out.append(a.AVISO_P2P)
     return "\n".join(out)
 
 
@@ -138,7 +140,7 @@ def resp_dolar(dolar: dict, stables: dict[str, dict], ahora: float | None = None
             "",
             "\U0001fa99 <b>Stablecoin más barata por exchange</b>",
             "<pre>" + "\n".join(
-                f"{coin:<4} {ex:<{ancho_ex}}  $ {p:>9,.2f}" for p, coin, ex in sorted(mejores_stable)
+                f"{coin:<4} {a.marcar(ex):<{ancho_ex + 2}}  $ {p:>9,.2f}" for p, coin, ex in sorted(mejores_stable)
             ) + "</pre>",
         ]
     return "\n".join(out)
@@ -150,11 +152,13 @@ def resp_arbitraje(resultados: list[tuple[str, a.Oportunidad | None]], umbral: f
     out = [f"\U0001f4ca <b>Spreads ahora</b> — alerta si supera <b>{umbral}%</b>", SEP]
     for par, o in con_datos:
         out.append(f"{_semaforo(o.spread_pct, umbral)} <b>{par.upper()}</b>  <b>{o.spread_pct:+.2f}%</b>")
-        out.append(f"<pre>  comprar {o.comprar_en:<13} {a.precio(o.precio_compra):>14}\n"
-                   f"  vender  {o.vender_en:<13} {a.precio(o.precio_venta):>14}</pre>")
+        out.append(f"<pre>  comprar {a.marcar(o.comprar_en):<15} {a.precio(o.precio_compra):>14}\n"
+                   f"  vender  {a.marcar(o.vender_en):<15} {a.precio(o.precio_venta):>14}</pre>")
     if sin_datos:
         out.append("⚪ sin datos: " + ", ".join(p.upper() for p in sin_datos))
     out.append("<i>\U0001f7e2 supera el umbral · \U0001f7e1 positivo · \U0001f534 negativo</i>")
+    if any(a.es_p2p(o.comprar_en) or a.es_p2p(o.vender_en) for _, o in con_datos):
+        out.append(a.AVISO_P2P)
     return "\n".join(out)
 
 

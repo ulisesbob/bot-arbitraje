@@ -34,7 +34,7 @@ CONFIG_DEFAULT = {
     "intervalo_seg": 60,
     "max_antiguedad_seg": 600,
     "cooldown_seg": 900,
-    "excluir_exchanges": ["*p2p", "p2pme"],
+    "excluir_exchanges": [],
     "max_desvio_pct": 5.0,
     "incluir_pasos": True,
     "rulos": True,
@@ -57,6 +57,19 @@ class Oportunidad:
 
 
 # ---------- logica pura ----------
+
+def es_p2p(nombre: str) -> bool:
+    """Exchanges P2P: el precio es la oferta de una persona, no una cotizacion firme."""
+    return nombre.endswith("p2p") or nombre == "p2pme"
+
+
+AVISO_P2P = ("\U0001f465 <b>P2P</b>: es el precio publicado por una persona, no una cotización firme. "
+             "Verificá precio, monto y método de pago antes de operar.")
+
+
+def marcar(nombre: str) -> str:
+    return nombre + (" \U0001f465" if es_p2p(nombre) else "")
+
 
 def esta_excluido(nombre: str, excluir: set) -> bool:
     """Nombre exacto, o patron con comodin al principio: "*p2p" excluye todo lo que termine en p2p."""
@@ -310,17 +323,20 @@ def ciclo(cfg: dict, cooldown: Cooldown, sin_comandos: bool = False) -> None:
 def formatear(o: Oportunidad, volumen: float, incluir_pasos: bool = True) -> str:
     coin, fiat = o.par.upper().split("/")
     ganancia = volumen * o.spread_pct / 100
-    ancho = max(len(o.comprar_en), len(o.vender_en))
+    c, v = marcar(o.comprar_en), marcar(o.vender_en)
+    ancho = max(len(c), len(v))
     msg = (
         f"\U0001f6a8 <b>ARBITRAJE {coin}/{fiat}</b>   ▲ <b>+{o.spread_pct:.2f}%</b>\n"
         f"{SEP}\n"
         f"<pre>"
-        f"\U0001f7e2 Comprar  {o.comprar_en:<{ancho}}  {precio(o.precio_compra)}\n"
-        f"\U0001f534 Vender   {o.vender_en:<{ancho}}  {precio(o.precio_venta)}"
+        f"\U0001f7e2 Comprar  {c:<{ancho}}  {precio(o.precio_compra)}\n"
+        f"\U0001f534 Vender   {v:<{ancho}}  {precio(o.precio_venta)}"
         f"</pre>\n"
         f"\U0001f4b0 Ganancia bruta: <b>~{ganancia:,.0f} {fiat}</b> por cada {volumen:,.0f} {fiat}\n"
         f"<i>Precios con comisiones de CriptoYa, sin transferencias ni retiros.</i>"
     )
+    if es_p2p(o.comprar_en) or es_p2p(o.vender_en):
+        msg += "\n" + AVISO_P2P
     if incluir_pasos:
         msg += pasos(o)
     return msg
