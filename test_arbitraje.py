@@ -103,3 +103,23 @@ def test_ciclo_sin_telegram_solo_escanea(monkeypatch):
     monkeypatch.setattr(a, "atender_comandos", lambda *x: llamadas.append("cmds"))
     a.ciclo(dict(a.CONFIG_DEFAULT), a.Cooldown(1))
     assert llamadas == ["pasada"]
+
+
+def test_reintenta_ante_429(monkeypatch):
+    import urllib.error
+    intentos = []
+
+    class Resp:
+        def __enter__(self): return self
+        def __exit__(self, *a): pass
+        def read(self): return b'{"ok": {"totalAsk": 1, "totalBid": 1, "time": 0}}'
+
+    def fake_urlopen(req, timeout=0):
+        intentos.append(1)
+        if len(intentos) < 3:
+            raise urllib.error.HTTPError(req.full_url, 429, "Too Many Requests", {}, None)
+        return Resp()
+    monkeypatch.setattr(a.urllib.request, "urlopen", fake_urlopen)
+    monkeypatch.setattr(a.time, "sleep", lambda s: None)
+    assert "ok" in a.obtener_cotizaciones("usdt/ars", 1000)
+    assert len(intentos) == 3

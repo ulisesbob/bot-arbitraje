@@ -34,7 +34,7 @@ CONFIG_DEFAULT = {
     "intervalo_seg": 60,
     "max_antiguedad_seg": 600,
     "cooldown_seg": 900,
-    "excluir_exchanges": ["binancep2p"],
+    "excluir_exchanges": ["*p2p", "p2pme"],
     "max_desvio_pct": 5.0,
     "incluir_pasos": True,
     "rulos": True,
@@ -58,6 +58,13 @@ class Oportunidad:
 
 # ---------- logica pura ----------
 
+def esta_excluido(nombre: str, excluir: set) -> bool:
+    """Nombre exacto, o patron con comodin al principio: "*p2p" excluye todo lo que termine en p2p."""
+    if nombre in excluir:
+        return True
+    return any(p.startswith("*") and nombre.endswith(p[1:]) for p in excluir)
+
+
 def filtrar_cotizaciones(cotizaciones: dict, max_antiguedad: int, ahora: float,
                          excluir: set | None = None, max_desvio_pct: float = 5.0) -> dict:
     """Descarta exchanges con precio 0, datos viejos, excluidos por config, o con
@@ -65,7 +72,7 @@ def filtrar_cotizaciones(cotizaciones: dict, max_antiguedad: int, ahora: float,
     excluir = excluir or set()
     validas = {}
     for nombre, q in cotizaciones.items():
-        if nombre in excluir or not isinstance(q, dict):
+        if esta_excluido(nombre, excluir) or not isinstance(q, dict):
             continue
         ask = q.get("totalAsk") or 0
         bid = q.get("totalBid") or 0
@@ -158,12 +165,19 @@ def guardar_config(cfg: dict) -> None:
     CONFIG_PATH.write_text(json.dumps(cfg, indent=2, ensure_ascii=False), encoding="utf-8")
 
 
-def obtener_cotizaciones(par: str, volumen: float) -> dict:
+def obtener_cotizaciones(par: str, volumen: float, reintentos: int = 2) -> dict:
     coin, fiat = par.lower().split("/")
     url = API.format(coin=coin, fiat=fiat, volumen=volumen)
     req = urllib.request.Request(url, headers={"User-Agent": "arbitraje-bot/1.0"})
-    with urllib.request.urlopen(req, timeout=20) as r:
-        return json.loads(r.read().decode("utf-8"))
+    for intento in range(reintentos + 1):
+        try:
+            with urllib.request.urlopen(req, timeout=20) as r:
+                return json.loads(r.read().decode("utf-8"))
+        except urllib.error.HTTPError as e:
+            if e.code != 429 or intento == reintentos:
+                raise
+            time.sleep(1.5 * (intento + 1))  # CriptoYa limita rafagas: esperar y reintentar
+    raise RuntimeError("inalcanzable")
 
 
 def obtener_dolar() -> dict:
@@ -182,7 +196,8 @@ def descargar_varios(pares: list[str], volumen: float) -> dict[str, dict | None]
         except Exception as e:  # noqa: BLE001
             print(f"[{par}] error consultando CriptoYa: {e}")
             return par, None
-    with ThreadPoolExecutor(max_workers=min(8, max(1, len(pares)))) as ex:
+    # pocos hilos: CriptoYa devuelve 429 si le llegan muchas peticiones juntas
+    with ThreadPoolExecutor(max_workers=min(3, max(1, len(pares)))) as ex:
         return dict(ex.map(uno, pares))
 
 
