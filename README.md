@@ -27,7 +27,7 @@ Se crea solo la primera vez. Campos:
 
 | Campo | Qué hace | Default |
 |---|---|---|
-| `pares` | pares a vigilar (`coin/fiat` según CriptoYa) | usdt, usdc, dai, btc, eth contra ars y contra usd |
+| `pares` | pares a vigilar (`coin/fiat` según CriptoYa) | usdt, usdc, dai, btc, eth contra ars y contra usd; sol, xrp, bnb, ada, doge, ltc, pol, avax, dot, trx, link contra ars |
 | `volumen` | monto en fiat para el cálculo de precios con comisión | 1000 |
 | `umbral_pct` | spread mínimo para alertar | 1.5 |
 | `intervalo_seg` | cada cuánto consulta | 60 |
@@ -35,6 +35,7 @@ Se crea solo la primera vez. Campos:
 | `cooldown_seg` | no repite la misma alerta (par + exchanges) durante este tiempo; se guarda en `cooldown.json` y sobrevive reinicios | 900 |
 | `excluir_exchanges` | exchanges a ignorar en alertas, rulos y comandos; `"*p2p"` excluiría todos los P2P. Por defecto los P2P entran, marcados con 👥 y una advertencia de verificar la cotización | `[]` |
 | `max_desvio_pct` | descarta precios alejados más de esto de la mediana (ofertas basura de P2P); `0` apaga el filtro | 5.0 |
+| `max_desvio_usd_pct` | lo mismo para los pares en dólares, más estricto: ahí conviven dólares locales y de cuentas en el exterior (Xapo, Astropay) que cotizan 4 a 6% más bajo sin ser arbitrables | 3.0 |
 | `rulos` | buscar rulos de 3 o 4 patas (pesos → dólar/stablecoin → … → pesos) | `true` |
 | `umbral_rulo_pct` | rendimiento mínimo de un rulo para alertar | 2.0 |
 | `volumen_rulo` | monto en pesos sobre el que se calcula la ganancia del rulo | 100000 |
