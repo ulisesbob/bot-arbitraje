@@ -52,18 +52,19 @@ def resp_ayuda() -> str:
     return "\n".join(out)
 
 
-def resp_moneda(coin: str, cot: dict, fiat: str = "ARS", ahora: float | None = None,
-                max_antiguedad: int = 600, max_desvio_pct: float = 5.0, n: int = 3,
-                excluir: set | None = None) -> str:
-    ahora = ahora or time.time()
-    validas = a.filtrar_cotizaciones(cot, max_antiguedad, ahora, excluir, max_desvio_pct)
-    nombre = MONEDAS.get(coin, coin.upper())
+FIATS = {"ARS": ("\U0001f1e6\U0001f1f7", "En pesos"), "USD": ("\U0001f1fa\U0001f1f8", "En dólares")}
+
+
+def _bloque_fiat(fiat: str, cot: dict | None, ahora: float, max_antiguedad: int,
+                 max_desvio_pct: float, n: int, excluir: set | None) -> tuple[list[str], bool]:
+    """Tablas de comprar/vender de una moneda contra un fiat. Devuelve (lineas, hay_p2p)."""
+    bandera, titulo = FIATS.get(fiat, ("", f"En {fiat}"))
+    validas = a.filtrar_cotizaciones(cot or {}, max_antiguedad, ahora, excluir, max_desvio_pct)
     if not validas:
-        return f"No hay cotizaciones válidas de {nombre} ahora."
+        return [f"{bandera} <b>{titulo} ({fiat})</b>: sin cotizaciones válidas ahora"], False
     compra = sorted(validas.items(), key=lambda kv: kv[1]["totalAsk"])[:n]
     venta = sorted(validas.items(), key=lambda kv: -kv[1]["totalBid"])[:n]
     ancho = max(len(a.marcar(ex)) for ex, _ in compra + venta)
-    icono = a.ICONO.get(coin, "\U0001fa99")
 
     def tabla(filas, campo):
         return "<pre>" + "\n".join(
@@ -71,17 +72,37 @@ def resp_moneda(coin: str, cot: dict, fiat: str = "ARS", ahora: float | None = N
         ) + "</pre>"
 
     spread = (venta[0][1]["totalBid"] - compra[0][1]["totalAsk"]) / compra[0][1]["totalAsk"] * 100
-    out = [
-        f"{icono} <b>{nombre} / {fiat}</b>",
-        SEP,
-        "\U0001f7e2 <b>Comprar más barato</b>",
+    lineas = [
+        f"{bandera} <b>{titulo} ({fiat})</b>",
+        "\U0001f7e2 Comprar más barato",
         tabla(compra, "totalAsk"),
-        "\U0001f534 <b>Vender mejor</b>",
+        "\U0001f534 Vender mejor",
         tabla(venta, "totalBid"),
         f"↔️ Spread entre ambos: <b>{spread:+.2f}%</b>",
-        "<i>Precios con comisiones, según CriptoYa.</i>",
     ]
-    if any(a.es_p2p(ex) for ex, _ in compra + venta):
+    return lineas, any(a.es_p2p(ex) for ex, _ in compra + venta)
+
+
+def resp_moneda(coin: str, cot: dict, fiat: str = "ARS", ahora: float | None = None,
+                max_antiguedad: int = 600, max_desvio_pct: float = 5.0, n: int = 3,
+                excluir: set | None = None, cot_usd: dict | None = None) -> str:
+    """Una moneda contra `fiat`; si se pasa cot_usd, agrega el bloque en dólares."""
+    ahora = ahora or time.time()
+    nombre = MONEDAS.get(coin, coin.upper())
+    icono = a.ICONO.get(coin, "\U0001fa99")
+    bloques = [(fiat, cot)]
+    if cot_usd is not None and fiat != "USD":
+        bloques.append(("USD", cot_usd))
+    out = [f"{icono} <b>{nombre}</b>", SEP]
+    hay_p2p = False
+    for i, (f, c) in enumerate(bloques):
+        if i:
+            out += ["", SEP]
+        lineas, p2p = _bloque_fiat(f, c, ahora, max_antiguedad, max_desvio_pct, n, excluir)
+        out += lineas
+        hay_p2p |= p2p
+    out.append("<i>Precios con comisiones, según CriptoYa.</i>")
+    if hay_p2p:
         out.append(a.AVISO_P2P)
     return "\n".join(out)
 
@@ -209,9 +230,10 @@ def manejar(texto: str, cfg: dict, persistente: bool = True) -> str:
         if cmd in ("start", "ayuda", "help"):
             return resp_ayuda()
         if cmd in MONEDAS:
-            cot = a.obtener_cotizaciones(f"{cmd}/{fiat}", cfg["volumen"])
-            return resp_moneda(cmd, cot, fiat.upper(), max_antiguedad=cfg["max_antiguedad_seg"],
-                               max_desvio_pct=cfg["max_desvio_pct"], excluir=excluir)
+            descargas = _descargar_varios([f"{cmd}/ars", f"{cmd}/usd"], cfg["volumen"])
+            return resp_moneda(cmd, descargas.get(f"{cmd}/ars") or {}, "ARS",
+                               max_antiguedad=cfg["max_antiguedad_seg"], max_desvio_pct=cfg["max_desvio_pct"],
+                               excluir=excluir, cot_usd=descargas.get(f"{cmd}/usd") or {})
         if cmd == "dolar":
             descargas = _descargar_varios([f"{c}/{fiat}" for c in ("usdt", "usdc", "dai")], cfg["volumen"])
             stables = {par.split("/")[0]: cot for par, cot in descargas.items() if cot}

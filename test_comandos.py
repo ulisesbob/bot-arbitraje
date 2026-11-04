@@ -108,3 +108,15 @@ def test_p2p_entra_marcado_con_advertencia():
     assert "binancep2p 👥" in lst and "P2P" in lst
     mon = a.texto_plano(c.resp_moneda("usdt", USDT, "ARS", ahora=NOW))
     assert "binancep2p 👥" in mon and "P2P" in mon
+
+
+def test_moneda_muestra_pesos_y_dolares():
+    usd = {"fiwind": {"totalAsk": 1.067, "totalBid": 1.065, "time": NOW},
+           "satoshitango": {"totalAsk": 1.084, "totalBid": 1.055, "time": NOW}}
+    txt = a.texto_plano(c.resp_moneda("usdt", USDT, "ARS", ahora=NOW, cot_usd=usd))
+    assert "En pesos (ARS)" in txt and "En dólares (USD)" in txt
+    assert txt.index("En pesos") < txt.index("En dólares")
+    assert re.search(r"1\. fiwind\s+1\.0670", txt)  # compra mas barata en dolares, 4 decimales
+    # sin datos en dolares no rompe
+    txt2 = a.texto_plano(c.resp_moneda("usdt", USDT, "ARS", ahora=NOW, cot_usd={}))
+    assert "En dólares (USD): sin cotizaciones" in txt2
