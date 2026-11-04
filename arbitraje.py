@@ -139,8 +139,9 @@ def cargar_config(escribir: bool = True) -> dict:
         CONFIG_PATH.write_text(json.dumps(CONFIG_DEFAULT, indent=2, ensure_ascii=False), encoding="utf-8")
         print(f"[info] cree {CONFIG_PATH.name} con valores por defecto, editalo a gusto")
     # el archivo manda; las variables de entorno solo rellenan campos vacios
-    cfg["telegram_token"] = cfg["telegram_token"] or os.environ.get("TELEGRAM_BOT_TOKEN", "")
-    cfg["telegram_chat_id"] = cfg["telegram_chat_id"] or os.environ.get("TELEGRAM_CHAT_ID", "")
+    # .strip(): las variables cargadas por consola suelen traer un salto de linea al final
+    cfg["telegram_token"] = (cfg["telegram_token"] or os.environ.get("TELEGRAM_BOT_TOKEN", "")).strip()
+    cfg["telegram_chat_id"] = str(cfg["telegram_chat_id"] or os.environ.get("TELEGRAM_CHAT_ID", "")).strip()
     return cfg
 
 

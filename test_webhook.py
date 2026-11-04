@@ -39,3 +39,11 @@ def test_cargar_config_sin_escribir_no_crea_archivo(tmp_path, monkeypatch):
     cfg = a.cargar_config(escribir=False)
     assert cfg["pares"] == a.CONFIG_DEFAULT["pares"]
     assert not (tmp_path / "config.json").exists()
+
+
+def test_variables_de_entorno_se_limpian(tmp_path, monkeypatch):
+    monkeypatch.setattr(a, "CONFIG_PATH", tmp_path / "config.json")
+    monkeypatch.setenv("TELEGRAM_BOT_TOKEN", "123:abc\r\n")
+    monkeypatch.setenv("TELEGRAM_CHAT_ID", " 555\n")
+    cfg = a.cargar_config(escribir=False)
+    assert cfg["telegram_token"] == "123:abc" and cfg["telegram_chat_id"] == "555"

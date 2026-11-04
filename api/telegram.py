@@ -48,7 +48,7 @@ class handler(BaseHTTPRequestHandler):  # noqa: N801  (nombre que exige Vercel)
         self._responder(200, "bot arbitraje: webhook activo")
 
     def do_POST(self) -> None:  # noqa: N802
-        secreto = os.environ.get("WEBHOOK_SECRET", "")
+        secreto = os.environ.get("WEBHOOK_SECRET", "").strip()
         if secreto and self.headers.get("X-Telegram-Bot-Api-Secret-Token") != secreto:
             self._responder(403, "secreto invalido")
             return
