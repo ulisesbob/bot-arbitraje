@@ -27,7 +27,7 @@ Se crea solo la primera vez. Campos:
 
 | Campo | Qué hace | Default |
 |---|---|---|
-| `pares` | pares a vigilar (`coin/fiat` según CriptoYa) | usdt, usdc, dai, btc, eth contra ars y contra usd; sol, xrp, bnb, ada, doge, ltc, pol, avax, dot, trx, link contra ars |
+| `pares` | pares a vigilar (`coin/fiat` según CriptoYa) | usdt, usdc, dai, btc, eth contra ars y contra usd |
 | `volumen` | monto en fiat para el cálculo de precios con comisión | 1000 |
 | `umbral_pct` | spread mínimo para alertar | 1.5 |
 | `intervalo_seg` | cada cuánto consulta | 60 |

@@ -28,9 +28,7 @@ API = "https://criptoya.com/api/{coin}/{fiat}/{volumen}"
 CONFIG_PATH = Path(__file__).with_name("config.json")
 
 CONFIG_DEFAULT = {
-    "pares": ["usdt/ars", "usdc/ars", "dai/ars", "btc/ars", "eth/ars", "usdt/usd", "usdc/usd", "btc/usd", "eth/usd",
-              "sol/ars", "xrp/ars", "bnb/ars", "ada/ars", "doge/ars", "ltc/ars", "pol/ars", "avax/ars", "dot/ars",
-              "trx/ars", "link/ars"],
+    "pares": ["usdt/ars", "usdc/ars", "dai/ars", "btc/ars", "eth/ars", "usdt/usd", "usdc/usd", "btc/usd", "eth/usd"],
     "volumen": 1000,
     "umbral_pct": 1.5,
     "intervalo_seg": 60,
