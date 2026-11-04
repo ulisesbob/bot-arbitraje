@@ -79,3 +79,12 @@ def test_manejar_comando_desconocido_devuelve_ayuda():
 
 def test_manejar_acepta_sufijo_de_bot_y_mayusculas():
     assert c.manejar("/AYUDA@botarbitrajetrecbot", dict(a.CONFIG_DEFAULT)) == c.resp_ayuda()
+
+
+def test_exclusion_se_aplica_en_moneda_y_dolar():
+    ex = {"binancep2p"}
+    txt = a.texto_plano(c.resp_moneda("usdt", USDT, "ARS", ahora=NOW, excluir=ex))
+    assert "binancep2p" not in txt and "1. okexp2p" in txt
+    txt = a.texto_plano(c.resp_dolar(DOLAR, {"usdt": USDT}, ahora=NOW, excluir=ex))
+    assert "binancep2p" not in txt and re.search(r"USDT\s+okexp2p", txt)
+    assert a.CONFIG_DEFAULT["excluir_exchanges"] == ["binancep2p"]

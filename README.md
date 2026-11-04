@@ -33,7 +33,7 @@ Se crea solo la primera vez. Campos:
 | `intervalo_seg` | cada cuánto consulta | 60 |
 | `max_antiguedad_seg` | descarta cotizaciones más viejas que esto | 600 |
 | `cooldown_seg` | no repite la misma alerta (par + exchanges) durante este tiempo; se guarda en `cooldown.json` y sobrevive reinicios | 900 |
-| `excluir_exchanges` | lista de exchanges a ignorar (ej. `["mexcp2p"]`) | `[]` |
+| `excluir_exchanges` | lista de exchanges a ignorar en alertas y comandos | `["binancep2p"]` |
 | `max_desvio_pct` | descarta precios alejados más de esto de la mediana (ofertas basura de P2P); `0` apaga el filtro | 5.0 |
 | `telegram_token` / `telegram_chat_id` | credenciales de Telegram | vacío |
 

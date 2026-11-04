@@ -53,9 +53,10 @@ def resp_ayuda() -> str:
 
 
 def resp_moneda(coin: str, cot: dict, fiat: str = "ARS", ahora: float | None = None,
-                max_antiguedad: int = 600, max_desvio_pct: float = 5.0, n: int = 3) -> str:
+                max_antiguedad: int = 600, max_desvio_pct: float = 5.0, n: int = 3,
+                excluir: set | None = None) -> str:
     ahora = ahora or time.time()
-    validas = a.filtrar_cotizaciones(cot, max_antiguedad, ahora, max_desvio_pct=max_desvio_pct)
+    validas = a.filtrar_cotizaciones(cot, max_antiguedad, ahora, excluir, max_desvio_pct)
     nombre = MONEDAS.get(coin, coin.upper())
     if not validas:
         return f"No hay cotizaciones válidas de {nombre} ahora."
@@ -84,7 +85,7 @@ def resp_moneda(coin: str, cot: dict, fiat: str = "ARS", ahora: float | None = N
 
 
 def resp_dolar(dolar: dict, stables: dict[str, dict], ahora: float | None = None,
-               max_antiguedad: int = 600) -> str:
+               max_antiguedad: int = 600, excluir: set | None = None) -> str:
     """dolar: json de /api/dolar. stables: {"usdt": cotizaciones, "usdc": ..., "dai": ...}."""
     ahora = ahora or time.time()
     opciones = []  # (precio, etiqueta, nota)
@@ -109,7 +110,7 @@ def resp_dolar(dolar: dict, stables: dict[str, dict], ahora: float | None = None
 
     mejores_stable = []
     for coin, cot in stables.items():
-        validas = a.filtrar_cotizaciones(cot, max_antiguedad, ahora)
+        validas = a.filtrar_cotizaciones(cot, max_antiguedad, ahora, excluir)
         if validas:
             ex, q = min(validas.items(), key=lambda kv: kv[1]["totalAsk"])
             mejores_stable.append((q["totalAsk"], coin.upper(), ex))
@@ -185,13 +186,14 @@ def manejar(texto: str, cfg: dict) -> str:
     cmd = partes[0].lstrip("/").split("@")[0].lower()
     arg = partes[1] if len(partes) > 1 else None
     fiat = "ars"
+    excluir = set(cfg["excluir_exchanges"])
     try:
         if cmd in ("start", "ayuda", "help"):
             return resp_ayuda()
         if cmd in MONEDAS:
             cot = a.obtener_cotizaciones(f"{cmd}/{fiat}", cfg["volumen"])
             return resp_moneda(cmd, cot, fiat.upper(), max_antiguedad=cfg["max_antiguedad_seg"],
-                               max_desvio_pct=cfg["max_desvio_pct"])
+                               max_desvio_pct=cfg["max_desvio_pct"], excluir=excluir)
         if cmd == "dolar":
             stables = {}
             for coin in ("usdt", "usdc", "dai"):
@@ -199,7 +201,8 @@ def manejar(texto: str, cfg: dict) -> str:
                     stables[coin] = a.obtener_cotizaciones(f"{coin}/{fiat}", cfg["volumen"])
                 except Exception:  # noqa: BLE001
                     pass
-            return resp_dolar(obtener_dolar(), stables, max_antiguedad=cfg["max_antiguedad_seg"])
+            return resp_dolar(obtener_dolar(), stables, max_antiguedad=cfg["max_antiguedad_seg"],
+                              excluir=excluir)
         if cmd == "arbitraje":
             ahora = time.time()
             res = []
@@ -207,7 +210,7 @@ def manejar(texto: str, cfg: dict) -> str:
                 try:
                     cot = a.obtener_cotizaciones(par, cfg["volumen"])
                     ops = a.detectar_oportunidades(cot, -100, cfg["max_antiguedad_seg"], ahora, par,
-                                                   set(cfg["excluir_exchanges"]), cfg["max_desvio_pct"])
+                                                   excluir, cfg["max_desvio_pct"])
                     res.append((par, ops[0] if ops else None))
                 except Exception:  # noqa: BLE001
                     res.append((par, None))

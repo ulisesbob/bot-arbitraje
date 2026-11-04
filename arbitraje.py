@@ -34,7 +34,7 @@ CONFIG_DEFAULT = {
     "intervalo_seg": 60,
     "max_antiguedad_seg": 600,
     "cooldown_seg": 900,
-    "excluir_exchanges": [],
+    "excluir_exchanges": ["binancep2p"],
     "max_desvio_pct": 5.0,
     "incluir_pasos": True,
     "telegram_token": "",
