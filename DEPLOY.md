@@ -60,9 +60,11 @@ cd "C:\Users\Ulise\Desktop\strat qqq 38%\cripto-arbitraje"; powershell -Executio
 4. Deshabilitar el workflow de GitHub Actions (si no, los dos escanean con estados
    separados y las alertas llegan duplicadas): Actions > bot arbitraje > ... > Disable workflow.
 
-Ver que está vivo: la URL del Worker (la imprime `wrangler deploy`) con `/ultimo` muestra la
-última corrida, cuánto tardó y cuántas alertas mandó. Logs en vivo: `npx wrangler tail` desde
-la carpeta `cloudflare`.
+Ver que está vivo: https://bot-arbitraje-reloj.ulisesarbitrajebot.workers.dev/ultimo muestra la
+última corrida guardada, cuánto tardó y cuántas alertas mandó (se guarda cuando algo cambia o
+cada 10 minutos, así que la hora puede tener hasta 10 minutos de atraso). Logs en vivo:
+`npx wrangler tail` desde la carpeta `cloudflare`. Panel: https://dash.cloudflare.com >
+Workers & Pages > bot-arbitraje-reloj.
 
 Límites del plan gratuito que importan: 100.000 ejecuciones por día (usamos 1.440) y 1.000
 escrituras de KV por día (el Worker escribe solo cuando el estado cambia o cada 10 minutos).

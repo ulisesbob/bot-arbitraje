@@ -1,4 +1,4 @@
-name = "bot-arbitraje-reloj"
+﻿name = "bot-arbitraje-reloj"
 main = "worker.js"
 compatibility_date = "2026-10-01"
 
@@ -12,7 +12,8 @@ SCAN_URL = "https://bot-arbitraje-xi.vercel.app/api/scan"
 # El id lo completa deploy/cloudflare_setup.ps1 al crear el namespace.
 [[kv_namespaces]]
 binding = "ESTADO"
-id = "REEMPLAZAR_ID"
+id = "b817f99a4eb74a4281bfd277898716e8"
 
 [observability]
 enabled = true
+
