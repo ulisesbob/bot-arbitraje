@@ -130,6 +130,12 @@ class Cooldown:
 
 # ---------- IO ----------
 
+def limpiar(valor: str) -> str:
+    """Saca lo que PowerShell agrega al cargar variables por tuberia: BOM (U+FEFF) al
+    principio y salto de linea al final. str.strip() no quita el BOM."""
+    return (valor or "").strip().strip("﻿").strip()
+
+
 def cargar_config(escribir: bool = True) -> dict:
     """escribir=False para entornos de solo lectura (Vercel): no crea config.json."""
     cfg = dict(CONFIG_DEFAULT)
@@ -139,9 +145,8 @@ def cargar_config(escribir: bool = True) -> dict:
         CONFIG_PATH.write_text(json.dumps(CONFIG_DEFAULT, indent=2, ensure_ascii=False), encoding="utf-8")
         print(f"[info] cree {CONFIG_PATH.name} con valores por defecto, editalo a gusto")
     # el archivo manda; las variables de entorno solo rellenan campos vacios
-    # .strip(): las variables cargadas por consola suelen traer un salto de linea al final
-    cfg["telegram_token"] = (cfg["telegram_token"] or os.environ.get("TELEGRAM_BOT_TOKEN", "")).strip()
-    cfg["telegram_chat_id"] = str(cfg["telegram_chat_id"] or os.environ.get("TELEGRAM_CHAT_ID", "")).strip()
+    cfg["telegram_token"] = limpiar(cfg["telegram_token"] or os.environ.get("TELEGRAM_BOT_TOKEN", ""))
+    cfg["telegram_chat_id"] = limpiar(str(cfg["telegram_chat_id"] or os.environ.get("TELEGRAM_CHAT_ID", "")))
     return cfg
 
 

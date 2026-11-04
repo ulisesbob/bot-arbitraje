@@ -43,7 +43,14 @@ def test_cargar_config_sin_escribir_no_crea_archivo(tmp_path, monkeypatch):
 
 def test_variables_de_entorno_se_limpian(tmp_path, monkeypatch):
     monkeypatch.setattr(a, "CONFIG_PATH", tmp_path / "config.json")
-    monkeypatch.setenv("TELEGRAM_BOT_TOKEN", "123:abc\r\n")
+    # BOM al principio y salto de linea al final: asi las carga PowerShell por tuberia
+    monkeypatch.setenv("TELEGRAM_BOT_TOKEN", "﻿123:abc\r\n")
     monkeypatch.setenv("TELEGRAM_CHAT_ID", " 555\n")
     cfg = a.cargar_config(escribir=False)
     assert cfg["telegram_token"] == "123:abc" and cfg["telegram_chat_id"] == "555"
+
+
+def test_limpiar_quita_bom_y_saltos():
+    assert a.limpiar("﻿abc\r\n") == "abc"
+    assert a.limpiar("  abc ") == "abc"
+    assert a.limpiar(None) == ""

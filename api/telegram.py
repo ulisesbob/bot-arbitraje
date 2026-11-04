@@ -19,13 +19,13 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 import arbitraje as a  # noqa: E402
 import comandos as c  # noqa: E402
 
-VERSION = "3"  # subir cuando cambie el webhook, para verificar que version esta desplegada
+VERSION = "4"  # subir cuando cambie el webhook, para verificar que version esta desplegada
 
 
 def _huella(valor: str) -> dict:
     """Largo y hash corto de un valor, para comparar sin exponerlo."""
     import hashlib
-    limpio = (valor or "").strip()
+    limpio = a.limpiar(valor)
     return {"largo": len(limpio), "largo_crudo": len(valor or ""),
             "sha8": hashlib.sha256(limpio.encode()).hexdigest()[:8]}
 
@@ -65,8 +65,8 @@ class handler(BaseHTTPRequestHandler):  # noqa: N801  (nombre que exige Vercel)
         }))
 
     def do_POST(self) -> None:  # noqa: N802
-        secreto = os.environ.get("WEBHOOK_SECRET", "").strip()
-        recibido = (self.headers.get("X-Telegram-Bot-Api-Secret-Token") or "").strip()
+        secreto = a.limpiar(os.environ.get("WEBHOOK_SECRET", ""))
+        recibido = a.limpiar(self.headers.get("X-Telegram-Bot-Api-Secret-Token") or "")
         if secreto and recibido != secreto:
             self._responder(403, json.dumps({
                 "error": "secreto invalido",
