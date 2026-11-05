@@ -35,7 +35,7 @@ def test_aplicar_reemplaza_binancep2p_y_cae_a_criptoya_si_falla(monkeypatch):
         ("USDT", "USD", "BUY"): [1.065], ("USDT", "USD", "SELL"): [1.052],
         ("USDT", "ARS", "BUY"): [], ("USDT", "ARS", "SELL"): [1655]}))
     r = p2p.aplicar(cots, cfg)
-    assert r == {"usdt/usd": "directo", "usdt/ars": "sin"}
+    assert r == {"usdt/usd:binancep2p": "directo", "usdt/ars:binancep2p": "sin"}
     assert cots["usdt/usd"]["binancep2p"]["totalAsk"] == 1.065 and cots["usdt/usd"]["fiwind"]["totalAsk"] == 1.067
     assert "binancep2p" not in cots["usdt/ars"]       # sin ofertas para tus metodos: no mostrar
     assert cots["dai/ars"]["binancep2p"]["totalAsk"] == 1  # DAI no esta en Binance P2P: queda CriptoYa
@@ -43,7 +43,7 @@ def test_aplicar_reemplaza_binancep2p_y_cae_a_criptoya_si_falla(monkeypatch):
     def explota(req, timeout=0): raise OSError("sin red")
     monkeypatch.setattr(p2p.urllib.request, "urlopen", explota)
     cots2 = {"btc/usd": {"binancep2p": {"totalAsk": 85000, "totalBid": 84000, "time": 1}}}
-    assert p2p.aplicar(cots2, cfg) == {"btc/usd": "criptoya"}
+    assert p2p.aplicar(cots2, cfg) == {"btc/usd:binancep2p": "criptoya"}
     assert cots2["btc/usd"]["binancep2p"]["totalAsk"] == 85000
 
 
@@ -120,7 +120,7 @@ def test_procesar_p2p_manda_alerta_una_vez(monkeypatch):
     enviados = []
     monkeypatch.setattr(a, "enviar_telegram", lambda t, c, m: enviados.append(m) or True)
     lib = {"ars": {"compra": [_of("compra", 1655.0)], "venta": [_of("venta", 1662.0)]}, "usd": None}
-    monkeypatch.setattr(p2p, "descargar_libros", lambda cfg: lib)
+    monkeypatch.setattr(p2p, "descargar_libros_plataformas", lambda cfg: {"ars": {"binancep2p": lib["ars"]}, "usd": {}})
     _, _, estado = p2p.procesar(cfg, {}, ahora=1000)
     _, _, estado = p2p.procesar(cfg, estado, ahora=1060)
     assert len(enviados) == 1 and "CRUCE P2P" in enviados[0]
@@ -193,3 +193,68 @@ def test_plan_elige_contraparte_confiable():
     cfg2 = _cfg(capital_usdt=1000, p2p_min_ops=1000)
     txt2 = a.texto_plano(p2p.plan_capital(1000 * 1660, an, cfg2, usdt_total=1000))
     assert "nuevito te paga" in txt2 and "Hay mejor precio" not in txt2
+
+
+def test_coincidencia_de_metodos_en_otras_plataformas():
+    mios = ["MercadoPagoNew", "UalaNew", "BankArgentina", "SantanderArgentina", "BancoBrubankNew", "NaranjaX"]
+    assert p2p._coincide("Mercadopago", mios) and p2p._coincide("Uala", mios) and p2p._coincide("Naranja X", mios)
+    assert p2p._coincide("Bank Transfer (Argentina)", mios) and p2p._coincide("bank", mios) and p2p._coincide("Santander Rio (Argentina)", mios)
+    assert not p2p._coincide("Santander Uruguay", mios) and not p2p._coincide("Lemon Cash", mios) and not p2p._coincide("Wise", mios)
+    # en dolares "Bank Transfer" a secas es cualquier banco del mundo: no cuenta
+    assert not p2p._coincide("Bank Transfer", mios, "usd") and p2p._coincide("Bank Transfer (Argentina)", mios, "usd")
+    assert p2p.plataformas_para("ars", dict(a.CONFIG_DEFAULT)) == ["binancep2p", "bybitp2p", "okexp2p", "bitgetp2p"]
+    assert p2p.plataformas_para("usd", dict(a.CONFIG_DEFAULT)) == ["binancep2p"]
+
+
+def test_libros_de_otras_plataformas(monkeypatch):
+    mios = ["MercadoPagoNew", "UalaNew"]
+    monkeypatch.setattr(p2p, "_bybit_nombres", lambda: {"129": "Mercadopago", "134": "Uala", "14": "Bank Transfer"})
+
+    def post(url, body):
+        if "bybit" in url:
+            precio = "1658.00" if body["side"] == "1" else "1653.50"
+            return {"result": {"items": [
+                {"price": precio, "nickName": "by1", "payments": ["129"], "minAmount": "50000", "maxAmount": "900000", "recentOrderNum": 217, "recentExecuteRate": 100},
+                {"price": "1600", "nickName": "by2", "payments": ["14"], "minAmount": "1", "maxAmount": "9", "recentOrderNum": 1, "recentExecuteRate": 50}]}}
+        if "bitget" in url:
+            precio = "1667" if body["side"] == 1 else "1659.1"
+            return {"data": {"dataList": [{"price": precio, "nickName": "bg1", "paymethodInfo": [{"paymethodName": "Mercadopago"}],
+                                           "minAmount": "40000", "maxAmount": "400000", "thirtyCompletionRate": "0.99"}]}}
+        raise AssertionError(url)
+
+    def get(url):
+        side = "sell" if "side=sell" in url else "buy"
+        precio = "1661.00" if side == "sell" else "1656.31"
+        return {"data": {side: [{"price": precio, "nickName": "ok1", "paymentMethods": ["Uala", "Mercadopago"],
+                                 "quoteMinAmountPerOrder": "50000", "quoteMaxAmountPerOrder": "750000",
+                                 "completedOrderQuantity": 9981, "completedRate": 0.96}]}}
+    monkeypatch.setattr(p2p, "_post", post)
+    monkeypatch.setattr(p2p, "_get", get)
+    by = p2p.libro_bybit("usdt", "ars", mios, 500000)
+    assert by["compra"][0].precio == 1658.0 and by["venta"][0].precio == 1653.5 and by["compra"][0].plataforma == "bybitp2p"
+    assert all(o.nombre == "by1" for o in by["compra"] + by["venta"])  # by2 no acepta tus metodos ni el monto
+    ok = p2p.libro_okx("usdt", "ars", mios, 500000)
+    assert ok["compra"][0].precio == 1661.0 and ok["venta"][0].precio == 1656.31 and ok["venta"][0].ordenes_mes == 9981
+    bg = p2p.libro_bitget("usdt", "ars", mios, 100000)
+    assert bg["compra"][0].precio == 1667.0 and bg["venta"][0].precio == 1659.1 and bg["venta"][0].tasa == 0.99
+
+
+def test_cruce_entre_plataformas_y_alerta():
+    cfg = _cfg(capital_usdt=1000, dolar_aprox=1650, p2p_transferencia_usd=1.0, umbral_p2p_plataformas_pct=0.7)
+    libros = {
+        "binancep2p": {"compra": [_of("compra", 1652.6, nombre="b_vende", maximo=4000000)], "venta": [_of("venta", 1646.0, nombre="b_compra")]},
+        "bitgetp2p": {"compra": [_of("compra", 1667.0)], "venta": [_of("venta", 1670.0, nombre="bg_compra", maximo=400000)]},
+        "okexp2p": None,
+    }
+    cp = p2p.cruce_plataformas(libros, "ars", cfg)
+    assert cp["compra_en"] == "binancep2p" and cp["venta_en"] == "bitgetp2p"
+    assert abs(cp["pct"] - (1670 - 1652.6) / 1652.6 * 100) < 1e-9
+    usdt = 825000 / 1652.6
+    assert abs(cp["costo_pct"] - 1.0 / usdt * 100) < 1e-9 and abs(cp["neto_pct"] - (cp["pct"] - cp["costo_pct"])) < 1e-9
+    assert cp["operable"] == 400000
+    txt = a.texto_plano(p2p.formatear_alerta_plataformas(cp, cfg))
+    assert "CRUCE ENTRE P2P en pesos" in txt and "Comprás en Binance" in txt and "Vendés en Bitget" in txt and "bg_compra" in txt
+    actuales = p2p.detectar({"ars": None}, cfg, {"ars": cp})
+    assert "plataformas|ars" in actuales
+    # sin dos plataformas distintas no hay cruce
+    assert p2p.cruce_plataformas({"binancep2p": libros["binancep2p"]}, "ars", cfg) is None

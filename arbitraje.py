@@ -67,6 +67,11 @@ CONFIG_DEFAULT = {
     "umbral_p2p_cruce_pct": 0.3,     # cruce comprar->vender ya (sin costos en el medio, con poco alcanza)
     "umbral_p2p_anuncio_pct": 1.0,   # margen entre puntas para publicar tus anuncios
     "p2p_tick_pct": 0.05,            # cuanto mejorar la punta para quedar primero
+    # Cruce entre plataformas P2P (comprar en una, vender en otra): consulta directa a cada una
+    "p2p_plataformas": ["binancep2p", "bybitp2p", "okexp2p", "bitgetp2p"],   # en pesos
+    "p2p_plataformas_usd": ["binancep2p"],  # en dolares los libros de las otras son globales y no sirven
+    "umbral_p2p_plataformas_pct": 0.7,   # neto, ya descontado mover el USDT
+    "p2p_transferencia_usd": 1.0,        # costo de mover USDT entre plataformas (TRC20/Polygon)
     "p2p_comision_anuncio_pct": 0.0, # comision que Binance cobra al que publica el anuncio (USDT/ARS hoy 0%; revisalo)
     "telegram_token": "",
     "telegram_chat_id": "",

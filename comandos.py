@@ -296,14 +296,16 @@ def manejar(texto: str, cfg: dict, persistente: bool = True) -> str:
                 return ("Decime con cu\u00e1nto arranc\u00e1s: <code>/capital 160000</code> (pesos) "
                         "o <code>/capital 1078 usdt</code>")
             cfg_p2p = dict(cfg, capital_usdt=usdt or 0, capital_ars=pesos or 0)
-            analisis = p2p.analizar_todo(cfg_p2p, p2p.descargar_libros(cfg_p2p))
+            libros = p2p.descargar_libros_plataformas(cfg_p2p)
+            analisis = p2p.analizar_todo(cfg_p2p, {f: libs.get("binancep2p") for f, libs in libros.items()})
+            cruces = {f: p2p.cruce_plataformas(libs, f, cfg_p2p) for f, libs in libros.items()}
             if cmd == "capital":
                 an = analisis.get("ars")
                 if usdt:
                     valor = usdt * (an["bid"].precio if an else cfg.get("dolar_aprox", 1650))
                     return p2p.plan_capital(valor, an, cfg_p2p, usdt_total=usdt)
                 return p2p.plan_capital(pesos, an, cfg_p2p)
-            return p2p.formatear_informe(analisis.get("ars"), analisis.get("usd"), None, cfg_p2p)
+            return p2p.formatear_informe(analisis.get("ars"), analisis.get("usd"), None, cfg_p2p, cruces)
         if cmd == "umbral":
             return resp_umbral(cfg, arg, persistente)
     except Exception as e:  # noqa: BLE001

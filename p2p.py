@@ -43,8 +43,9 @@ class Oferta:
     minimo: float        # en fiat
     maximo: float        # en fiat (dinamico: lo que el anunciante puede cubrir ahora)
     nombre: str
-    ordenes_mes: int
+    ordenes_mes: int     # 0 = la plataforma no lo publica
     tasa: float          # fraccion de ordenes completadas en el mes
+    plataforma: str = "binancep2p"
 
     @property
     def metodos_cortos(self) -> str:
@@ -123,24 +124,35 @@ def aplicar(cotizaciones: dict[str, dict | None], cfg: dict) -> dict[str, str]:
     montos = montos_p2p(cfg)
     resultado = {}
     for par, cot in cotizaciones.items():
-        if not cot or "binancep2p" not in cot:
+        if not cot:
             continue
         asset, fiat = par.lower().split("/")
-        if asset not in ACTIVOS:
-            continue
-        try:
-            directa = cotizacion(asset, fiat, metodos, montos.get(fiat))
-        except Exception as e:  # noqa: BLE001
-            print(f"[p2p] {par}: error consultando Binance, uso CriptoYa: {e}")
-            resultado[par] = "criptoya"
-            continue
-        if directa is None:
-            # sin ofertas para tus metodos/monto: mejor no mostrar un precio que no podes operar
-            del cot["binancep2p"]
-            resultado[par] = "sin"
-        else:
-            cot["binancep2p"] = directa
-            resultado[par] = "directo"
+        for plat in plataformas_para(fiat, cfg):
+            if plat not in cot:
+                continue
+            if plat == "binancep2p" and asset not in ACTIVOS:
+                continue
+            if plat != "binancep2p" and asset != "usdt":
+                continue  # en las otras plataformas solo consulto USDT
+            try:
+                if plat == "binancep2p":
+                    directa = cotizacion(asset, fiat, metodos, montos.get(fiat))
+                else:
+                    lib = libro_plataforma(plat, asset, fiat, metodos, montos.get(fiat), rows=3)
+                    directa = None
+                    if lib.get("compra") and lib.get("venta"):
+                        ask, bid = lib["compra"][0].precio, lib["venta"][0].precio
+                        directa = {"ask": ask, "totalAsk": ask, "bid": bid, "totalBid": bid, "time": int(time.time())}
+            except Exception as e:  # noqa: BLE001
+                print(f"[p2p] {par} {plat}: error, uso CriptoYa: {e}")
+                resultado[f"{par}:{plat}"] = "criptoya"
+                continue
+            if directa is None:
+                del cot[plat]  # sin ofertas para tus metodos/monto: no mostrar un precio que no podes operar
+                resultado[f"{par}:{plat}"] = "sin"
+            else:
+                cot[plat] = directa
+                resultado[f"{par}:{plat}"] = "directo"
     return resultado
 
 
@@ -210,7 +222,8 @@ def _metodos(ofertas: list[Oferta], n: int = 3) -> str:
 
 
 def _rep(o: Oferta) -> str:
-    return f"{o.nombre} ({o.ordenes_mes} ops, {o.tasa * 100:.0f}%)"
+    ops = f"{o.ordenes_mes} ops" if o.ordenes_mes else "ops ?"
+    return f"{o.nombre} ({ops}, {o.tasa * 100:.0f}%)"
 
 
 def _fiat_nombre(fiat: str) -> str:
@@ -265,7 +278,8 @@ REGLAS = ("<i>Reglas: liberá el USDT solo con la plata acreditada · los precio
 TITULO_FIAT = {"ars": "\U0001f1e6\U0001f1f7 PESOS", "usd": "\U0001f1fa\U0001f1f8 DÓLARES"}
 
 
-def formatear_informe(an_ars: dict | None, an_usd: dict | None, dolar: dict | None, cfg: dict) -> str:
+def formatear_informe(an_ars: dict | None, an_usd: dict | None, dolar: dict | None, cfg: dict,
+                      cruces: dict[str, dict | None] | None = None) -> str:
     from arbitraje import SEP
     montos = montos_p2p(cfg)
     out = [f"\U0001f465 <b>Binance P2P — USDT</b>  <i>tus métodos · "
@@ -278,6 +292,9 @@ def formatear_informe(an_ars: dict | None, an_usd: dict | None, dolar: dict | No
         out += bloque_mercado(an)
     if not an_ars and not an_usd:
         out.append("No pude leer las ofertas de Binance P2P ahora.")
+    for fiat, cp in (cruces or {}).items():
+        if cp:
+            out += [SEP, f"<b>{TITULO_FIAT.get(fiat, fiat)}</b> \u00b7 entre plataformas"] + bloque_cruce_plataformas(cp, cfg)
     out += [SEP, REGLAS]
     return "\n".join(out)
 
@@ -369,11 +386,228 @@ def plan_capital(capital: float, an: dict | None, cfg: dict, usdt_total: float |
     return "\n".join(out)
 
 
+# ---------- otras plataformas P2P (Bybit, OKX, Bitget): buscadores publicos ----------
+
+# Palabras con las que se reconoce cada metodo tuyo en los nombres que usan las otras plataformas
+PALABRAS_METODO = {
+    "MercadoPagoNew": ("mercadopago", "mercado pago"),
+    "UalaNew": ("uala", "ualá"), "UalaNewest": ("uala", "ualá"),
+    "BankArgentina": ("argentin", "transferencia", "cbu"),  # + los genericos de abajo, solo en pesos
+    "SantanderArgentina": ("santander",),
+    "BancoBrubankNew": ("brubank",),
+    "NaranjaX": ("naranja",),
+    "Beloapp": ("belo",), "personalpay": ("personal pay", "personalpay"),
+    "LemonCash": ("lemon",), "BBVABank": ("bbva",),
+}
+# Nombres que parecen locales pero son de otro pais (Bybit tiene Santander Uruguay, Spain, Chile...)
+OTROS_PAISES = ("uruguay", "spain", "chile", "poland", "méxico", "mexico", "perú", "peru", "brasil", "brazil",
+                "colombia", "paraguay", "bolivia", "venezuela", "ecuador")
+HDR = {"Content-Type": "application/json", "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)",
+       "Accept": "application/json"}
+
+
+GENERICOS_BANCO = ("bank transfer", "bank")  # en un libro en pesos, "bank" es un banco argentino; en dolares, cualquiera
+
+
+def _coincide(nombre_metodo: str, metodos: list[str], fiat: str = "ars") -> bool:
+    n = (nombre_metodo or "").lower()
+    if any(p in n for p in OTROS_PAISES):
+        return False
+    if any(p in n for m in metodos for p in PALABRAS_METODO.get(m, (m.lower(),))):
+        return True
+    return fiat == "ars" and "BankArgentina" in metodos and any(p in n for p in GENERICOS_BANCO)
+
+
+def _post(url: str, body: dict) -> dict:
+    req = urllib.request.Request(url, data=json.dumps(body).encode(), headers=HDR)
+    with urllib.request.urlopen(req, timeout=15) as r:
+        return json.loads(r.read().decode("utf-8"))
+
+
+def _get(url: str) -> dict:
+    req = urllib.request.Request(url, headers=HDR)
+    with urllib.request.urlopen(req, timeout=15) as r:
+        return json.loads(r.read().decode("utf-8"))
+
+
+def _dentro(o: Oferta, monto: float | None) -> bool:
+    return not monto or (o.minimo <= monto and (o.maximo <= 0 or monto <= o.maximo))
+
+
+def _armar(ofertas: list[Oferta], metodos: list[str], monto: float | None, rows: int, fiat: str = "ars") -> list[Oferta]:
+    """Filtra por tus metodos (si hay) y por monto; conserva el orden (mejor primero)."""
+    out = [o for o in ofertas if _dentro(o, monto) and (not metodos or any(_coincide(m, metodos, fiat) for m in o.metodos))]
+    return out[:rows]
+
+
+_BYBIT_METODOS: dict[str, str] = {}
+
+
+def _bybit_nombres() -> dict[str, str]:
+    global _BYBIT_METODOS
+    if not _BYBIT_METODOS:
+        d = _post("https://api2.bybit.com/fiat/otc/configuration/queryAllPaymentList", {})
+        lst = (d.get("result") or {}).get("paymentConfigVo") or []
+        _BYBIT_METODOS = {str(x.get("paymentType")): str(x.get("paymentName")) for x in lst}
+    return _BYBIT_METODOS
+
+
+def libro_bybit(asset: str, fiat: str, metodos: list[str], monto: float | None, rows: int = 10) -> dict:
+    nombres = _bybit_nombres()
+    out = {}
+    for side, lado in (("1", "compra"), ("0", "venta")):  # 1: anuncios de venta (vos compras); 0: de compra (vos vendes)
+        d = _post("https://api2.bybit.com/fiat/otc/item/online",
+                  {"userId": "", "tokenId": asset.upper(), "currencyId": fiat.upper(), "payment": [], "side": side,
+                   "size": str(rows * 4), "page": "1", "amount": ""})
+        ofertas = []
+        for it in (d.get("result") or {}).get("items") or []:
+            try:
+                ofertas.append(Oferta(lado, float(it["price"]), [nombres.get(str(p), str(p)) for p in it.get("payments") or []],
+                                      float(it.get("minAmount") or 0), float(it.get("maxAmount") or 0),
+                                      str(it.get("nickName") or "?"), int(it.get("recentOrderNum") or 0),
+                                      float(it.get("recentExecuteRate") or 0) / 100, "bybitp2p"))
+            except (KeyError, TypeError, ValueError):
+                continue
+        out[lado] = _armar(ofertas, metodos, monto, rows, fiat.lower())
+    return out
+
+
+def libro_okx(asset: str, fiat: str, metodos: list[str], monto: float | None, rows: int = 10) -> dict:
+    out = {}
+    for side, lado in (("sell", "compra"), ("buy", "venta")):  # sell: anuncios de venta (vos compras)
+        url = (f"https://www.okx.com/v3/c2c/tradingOrders/books?quoteCurrency={fiat.upper()}&baseCurrency={asset.upper()}"
+               f"&side={side}&paymentMethod=all&userType=all&receivingAds=false&limit={rows * 4}&t={int(time.time() * 1000)}")
+        d = _get(url)
+        ofertas = []
+        for it in (d.get("data") or {}).get(side) or []:
+            try:
+                ofertas.append(Oferta(lado, float(it["price"]), [str(m) for m in it.get("paymentMethods") or []],
+                                      float(it.get("quoteMinAmountPerOrder") or 0), float(it.get("quoteMaxAmountPerOrder") or 0),
+                                      str(it.get("nickName") or "?"), int(it.get("completedOrderQuantity") or 0),
+                                      float(it.get("completedRate") or 0), "okexp2p"))
+            except (KeyError, TypeError, ValueError):
+                continue
+        out[lado] = _armar(ofertas, metodos, monto, rows, fiat.lower())
+    return out
+
+
+def libro_bitget(asset: str, fiat: str, metodos: list[str], monto: float | None, rows: int = 10) -> dict:
+    out = {}
+    for side, lado in ((1, "compra"), (2, "venta")):  # 1: anuncios de venta (vos compras); 2: de compra (vos vendes)
+        d = _post("https://www.bitget.com/v1/p2p/pub/adv/queryAdvList",
+                  {"side": side, "pageNo": 1, "pageSize": rows * 4, "coinCode": asset.upper(), "fiatCode": fiat.upper(),
+                   "languageType": 0})
+        ofertas = []
+        for it in (d.get("data") or {}).get("dataList") or []:
+            try:
+                ofertas.append(Oferta(lado, float(it["price"]), [str(m.get("paymethodName")) for m in it.get("paymethodInfo") or []],
+                                      float(it.get("minAmount") or 0), float(it.get("maxAmount") or 0),
+                                      str(it.get("nickName") or "?"), 0,  # Bitget no publica cantidad de ordenes
+                                      float(it.get("thirtyCompletionRate") or 0), "bitgetp2p"))
+            except (KeyError, TypeError, ValueError):
+                continue
+        out[lado] = _armar(ofertas, metodos, monto, rows, fiat.lower())
+    return out
+
+
+def libro_binance(asset: str, fiat: str, metodos: list[str], monto: float | None, rows: int = 10) -> dict:
+    return libro(asset, fiat, metodos, monto, rows)
+
+
+PLATAFORMAS = {"binancep2p": libro_binance, "bybitp2p": libro_bybit, "okexp2p": libro_okx, "bitgetp2p": libro_bitget}
+NOMBRE_PLAT = {"binancep2p": "Binance", "bybitp2p": "Bybit", "okexp2p": "OKX", "bitgetp2p": "Bitget"}
+
+
+def plataformas_para(fiat: str, cfg: dict) -> list[str]:
+    """Que plataformas consultar para un fiat. En dolares los libros de Bybit/OKX/Bitget son globales
+    (bancos de Camboya, Emiratos...) y no sirven: por defecto solo Binance."""
+    if fiat.lower() != "ars":
+        return [p for p in (cfg.get("p2p_plataformas_usd") or ["binancep2p"]) if p in PLATAFORMAS]
+    return [p for p in (cfg.get("p2p_plataformas") or ["binancep2p"]) if p in PLATAFORMAS]
+
+
+def libro_plataforma(plat: str, asset: str, fiat: str, metodos: list[str], monto: float | None, rows: int = 10) -> dict:
+    return PLATAFORMAS[plat](asset, fiat, metodos, monto, rows)
+
+
+def descargar_libros_plataformas(cfg: dict) -> dict[str, dict[str, dict | None]]:
+    """{fiat: {plataforma: libro | None}} para USDT, en paralelo."""
+    from concurrent.futures import ThreadPoolExecutor
+    metodos, montos = cfg.get("p2p_metodos") or [], montos_p2p(cfg)
+    fiats = cfg.get("p2p_fiats") or ["ars", "usd"]
+    tareas = [(f, p) for f in fiats for p in plataformas_para(f, cfg)]
+
+    def una(fp):
+        f, p = fp
+        try:
+            return fp, libro_plataforma(p, "usdt", f, metodos, montos.get(f))
+        except Exception as e:  # noqa: BLE001
+            print(f"[p2p] {p} usdt/{f}: {e}")
+            return fp, None
+    out: dict[str, dict] = {f: {} for f in fiats}
+    with ThreadPoolExecutor(max_workers=min(6, len(tareas))) as ex:
+        for (f, p), lib in ex.map(una, tareas):
+            out[f][p] = lib
+    return out
+
+
+def cruce_plataformas(libros: dict[str, dict | None], fiat: str, cfg: dict) -> dict | None:
+    """Mejor compra en una plataforma y mejor venta en otra. Neto = bruto - costo de mover el USDT."""
+    compras = [(p, lib["compra"][0]) for p, lib in libros.items() if lib and lib.get("compra")]
+    ventas = [(p, lib["venta"][0]) for p, lib in libros.items() if lib and lib.get("venta")]
+    mejor = None
+    for pc, oc in compras:
+        for pv, ov in ventas:
+            if pc == pv:
+                continue
+            pct = (ov.precio - oc.precio) / oc.precio * 100
+            if mejor is None or pct > mejor["pct"]:
+                mejor = {"compra_en": pc, "compra": oc, "venta_en": pv, "venta": ov, "pct": pct}
+    if mejor is None:
+        return None
+    monto = montos_p2p(cfg).get(fiat, 0)
+    costo_usd = cfg.get("p2p_transferencia_usd", 1.0)
+    usdt = monto / mejor["compra"].precio if monto else 0
+    costo_pct = (costo_usd / usdt * 100) if usdt else 0
+    mejor.update({"fiat": fiat, "monto": monto, "costo_pct": costo_pct, "neto_pct": mejor["pct"] - costo_pct,
+                  "operable": min(mejor["compra"].maximo or monto, mejor["venta"].maximo or monto, monto or 1e18)})
+    return mejor
+
+
+def bloque_cruce_plataformas(cp: dict | None, cfg: dict) -> list[str]:
+    if not cp:
+        return []
+    f = cp["fiat"]
+    oc, ov = cp["compra"], cp["venta"]
+    sem = "\U0001f7e2" if cp["neto_pct"] >= cfg.get("umbral_p2p_plataformas_pct", 0.7) else ("\U0001f7e1" if cp["neto_pct"] > 0 else "\U0001f534")
+    out = [f"\U0001f501 <b>Cruce entre plataformas</b>  {sem} <b>{cp['neto_pct']:+.2f}%</b> neto "
+           f"(bruto {cp['pct']:+.2f}%, mover USDT ~{cp['costo_pct']:.2f}%)",
+           f"• Comprás en <b>{NOMBRE_PLAT.get(cp['compra_en'], cp['compra_en'])}</b> a {_fmt(oc.precio, f)}: "
+           f"{oc.nombre} ({oc.metodos_cortos[:24]}, {_k(oc.minimo, f)}–{_k(oc.maximo, f)})",
+           f"• Vendés en <b>{NOMBRE_PLAT.get(cp['venta_en'], cp['venta_en'])}</b> a {_fmt(ov.precio, f)}: "
+           f"{ov.nombre} ({ov.metodos_cortos[:24]}, {_k(ov.minimo, f)}–{_k(ov.maximo, f)})"]
+    if cp["neto_pct"] > 0:
+        out.append(f"• Con USDT ya en {NOMBRE_PLAT.get(cp['venta_en'], cp['venta_en'])} lo hacés al instante; "
+                   f"si no, transferí por TRC20 o Polygon (5 a 10 min).")
+    return out
+
+
+def formatear_alerta_plataformas(cp: dict, cfg: dict) -> str:
+    from arbitraje import SEP, AVISO_P2P
+    nombre = _fiat_nombre(cp["fiat"])
+    titulo = f"\U0001f6a8 <b>CRUCE ENTRE P2P en {nombre}</b>   ▲ <b>{cp['neto_pct']:+.2f}%</b> neto"
+    return "\n".join([titulo, SEP] + bloque_cruce_plataformas(cp, cfg) + [AVISO_P2P])
+
+
 # ---------- alertas con apertura y cierre ----------
 
-def detectar(an_por_fiat: dict[str, dict | None], cfg: dict) -> dict[str, dict]:
+def detectar(an_por_fiat: dict[str, dict | None], cfg: dict,
+             cruces: dict[str, dict | None] | None = None) -> dict[str, dict]:
     """Oportunidades P2P que superan los umbrales ahora: {clave: {"pct", "tipo", "fiat"}}."""
     actuales = {}
+    for fiat, cp in (cruces or {}).items():
+        if cp and cp["neto_pct"] >= cfg.get("umbral_p2p_plataformas_pct", 0.7):
+            actuales[f"plataformas|{fiat}"] = {"pct": cp["neto_pct"], "tipo": "plataformas", "fiat": fiat}
     for fiat, an in an_por_fiat.items():
         if not an:
             continue
@@ -413,7 +647,7 @@ def formatear_cierres(cerradas: list[dict]) -> str:
     from arbitraje import SEP
     out = ["✅ <b>SE CERRÓ EN P2P</b>", SEP]
     for c in cerradas:
-        que = "cruce" if c["tipo"] == "cruce" else "margen para anuncios"
+        que = {"cruce": "cruce", "plataformas": "cruce entre plataformas"}.get(c["tipo"], "margen para anuncios")
         out.append(f"• {que} en {'pesos' if c['fiat'] == 'ars' else 'dólares'} "
                    f"(llegó a <b>{c['max']:+.2f}%</b>, duró {c['duracion_min']:.0f} min)")
     return "\n".join(out)
@@ -444,18 +678,23 @@ def procesar(cfg: dict, abiertas: dict, ahora: float | None = None) -> tuple[lis
     """Descarga, analiza, compara con el estado anterior y manda alertas. No toca el disco."""
     import arbitraje as a
     ahora = ahora or time.time()
-    analisis = analizar_todo(cfg, descargar_libros(cfg))
+    libros = descargar_libros_plataformas(cfg)
+    analisis = analizar_todo(cfg, {f: libs.get("binancep2p") for f, libs in libros.items()})
+    cruces = {f: cruce_plataformas(libs, f, cfg) for f, libs in libros.items()}
     for fiat, an in analisis.items():
         if an:
-            print(f"[p2p] usdt/{fiat}: cruce {an['cruce_pct']:+.2f}%  anuncios {an['margen_pct']:+.2f}%")
-    nuevas, cerradas, estado = actualizar(abiertas, detectar(analisis, cfg), ahora)
+            cp = cruces.get(fiat)
+            extra = f"  plataformas {cp['neto_pct']:+.2f}% neto ({NOMBRE_PLAT.get(cp['compra_en'])}\u2192{NOMBRE_PLAT.get(cp['venta_en'])})" if cp else ""
+            print(f"[p2p] usdt/{fiat}: cruce {an['cruce_pct']:+.2f}%  anuncios {an['margen_pct']:+.2f}%{extra}")
+    nuevas, cerradas, estado = actualizar(abiertas, detectar(analisis, cfg, cruces), ahora)
     tok, chat = cfg["telegram_token"], cfg["telegram_chat_id"]
     if cerradas:
         msg = formatear_cierres(cerradas)
         print("\n" + a.texto_plano(msg) + "\n")
         a.enviar_telegram(tok, chat, msg)
     for clave in nuevas:
-        msg = formatear_alerta(clave, analisis[estado[clave]["fiat"]])
+        fiat = estado[clave]["fiat"]
+        msg = formatear_alerta_plataformas(cruces[fiat], cfg) if clave.startswith("plataformas") else formatear_alerta(clave, analisis[fiat])
         print("\n" + a.texto_plano(msg) + "\n")
         a.enviar_telegram(tok, chat, msg)
     return nuevas, cerradas, estado

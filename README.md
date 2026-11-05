@@ -47,6 +47,9 @@ Se crea solo la primera vez. Campos:
 | `p2p_monto` | monto por fiat con el que se buscan ofertas (las ofertas tienen mínimo y máximo) | usd 500, ars 500000 |
 | `capital_ars` / `capital_usdt` | tu capital total para P2P, en pesos o en USDT (USDT manda); la mitad opera en pesos y la mitad en USDT. Dimensiona las ofertas que mira /p2p y las alertas | 0 / 1078 |
 | `dolar_aprox` | solo para dimensionar el lado en dólares | 1650 |
+| `p2p_plataformas` | plataformas P2P que se consultan directo con tus métodos de pago (Binance, Bybit, OKX, Bitget). Sus precios reemplazan a los de CriptoYa y se buscan cruces entre ellas | las cuatro |
+| `umbral_p2p_plataformas_pct` | neto mínimo para alertar un cruce entre plataformas (comprar en una, vender en otra), ya descontado mover el USDT | 0.7 |
+| `p2p_transferencia_usd` | costo estimado de mover USDT entre plataformas | 1.0 |
 | `p2p_comision_anuncio_pct` | comisión que Binance cobra al que publica un anuncio, por lado; se descuenta dos veces del margen por vuelta. Hoy 0% para USDT en pesos, revisalo en Binance | 0.0 |
 | `telegram_token` / `telegram_chat_id` | credenciales de Telegram | vacío |
 
