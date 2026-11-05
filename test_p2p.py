@@ -92,13 +92,13 @@ def test_informe_elige_que_hacer_y_marca_p2p():
     ars = p2p.analizar_fiat({"compra": [_of("compra", 1655.0, nombre="vende1")], "venta": [_of("venta", 1662.0, nombre="compra1")]}, "ars", 500_000, cfg)
     usd = p2p.analizar_fiat({"compra": [_of("compra", 1.070)], "venta": [_of("venta", 1.050)]}, "usd", 500, cfg)
     txt = a.texto_plano(p2p.formatear_informe(ars, usd, {"oficial": {"ask": 1570}}, cfg))
-    assert "Comprás a (vendedores)" in txt and "vende1" in txt and "100k–600k" in txt and "100✔ 98%" in txt
-    assert "Qué hacer ahora" in txt and "Comprá" in txt and "vendeselo a compra1" in txt  # el cruce manda
-    assert "Dólar implícito" in txt and "oficial $ 1,570" in txt and "P2P" in txt
+    assert "QUÉ HACER: comprar y vender ya" in txt and "Comprale a vende1" in txt and "Vendele a compra1" in txt
+    assert "Mercado ahora" in txt and "100k–600k" in txt and "vende1 (100 ops, 98%)" in txt
+    assert "Reglas:" in txt and "PESOS" in txt and "DÓLARES" in txt
     # sin cruce pero con margen: sugiere anuncios
     usd2 = p2p.analizar_fiat({"compra": [_of("compra", 1.070)], "venta": [_of("venta", 1.050)]}, "usd", 500, cfg)
     txt2 = a.texto_plano(p2p.formatear_informe(None, usd2, None, cfg))
-    assert "Publicá un anuncio de compra" in txt2 and "por vuelta" in txt2
+    assert "QUÉ HACER: publicar anuncios" in txt2 and "Anuncio de COMPRA a US$ 1.051" in txt2 and "Margen por vuelta" in txt2
 
 
 def test_alertas_p2p_abren_y_cierran():
@@ -109,7 +109,7 @@ def test_alertas_p2p_abren_y_cierran():
     nuevas, cerradas, estado = p2p.actualizar({}, actuales, ahora=1000)
     assert nuevas == ["cruce|ars"] and cerradas == [] and estado["cruce|ars"]["max"] == actuales["cruce|ars"]["pct"]
     txt = a.texto_plano(p2p.formatear_alerta("cruce|ars", cruzado))
-    assert "CRUCE P2P en pesos" in txt and "1️⃣ Comprá" in txt and "sin transferencias" in txt
+    assert "CRUCE P2P en pesos" in txt and "1. Comprale a" in txt and "Mercado ahora" in txt
     nuevas, cerradas, estado = p2p.actualizar(estado, {}, ahora=1600)
     assert nuevas == [] and estado == {} and cerradas[0]["tipo"] == "cruce" and abs(cerradas[0]["duracion_min"] - 10) < 1e-9
     assert "SE CERRÓ EN P2P" in a.texto_plano(p2p.formatear_cierres(cerradas))
@@ -127,3 +127,12 @@ def test_procesar_p2p_manda_alerta_una_vez(monkeypatch):
     lib["ars"]["venta"][0] = _of("venta", 1640.0)
     _, _, estado = p2p.procesar(cfg, estado, ahora=1200)
     assert len(enviados) == 2 and "SE CERR" in enviados[1] and estado == {}
+
+
+def test_comision_de_anuncio_descuenta_del_margen():
+    lib = {"compra": [_of("compra", 1670.0)], "venta": [_of("venta", 1640.0)]}
+    sin = p2p.analizar_fiat(lib, "ars", 500_000, _cfg())
+    con = p2p.analizar_fiat(lib, "ars", 500_000, _cfg(p2p_comision_anuncio_pct=0.35))
+    assert abs(sin["margen_pct"] - sin["margen_bruto_pct"]) < 1e-9
+    assert abs(con["margen_pct"] - (con["margen_bruto_pct"] - 0.7)) < 1e-9
+    assert "descontada la comisi" in a.texto_plano(p2p.formatear_informe(con, None, None, _cfg(p2p_comision_anuncio_pct=0.35)))

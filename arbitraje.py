@@ -59,6 +59,7 @@ CONFIG_DEFAULT = {
     "umbral_p2p_cruce_pct": 0.3,     # cruce comprar->vender ya (sin costos en el medio, con poco alcanza)
     "umbral_p2p_anuncio_pct": 1.0,   # margen entre puntas para publicar tus anuncios
     "p2p_tick_pct": 0.05,            # cuanto mejorar la punta para quedar primero
+    "p2p_comision_anuncio_pct": 0.0, # comision que Binance cobra al que publica el anuncio (USDT/ARS hoy 0%; revisalo)
     "telegram_token": "",
     "telegram_chat_id": "",
 }

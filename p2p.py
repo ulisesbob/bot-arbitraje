@@ -171,8 +171,11 @@ def analizar_fiat(lib: dict, fiat: str, monto: float, cfg: dict) -> dict | None:
     tick = ask.precio * cfg.get("p2p_tick_pct", 0.05) / 100  # cuanto mejorar la punta para quedar primero
     anuncio_compra = bid.precio + tick   # tu anuncio de compra: pagas un poco mas que el mejor comprador
     anuncio_venta = ask.precio - tick    # tu anuncio de venta: cobras un poco menos que el mejor vendedor
-    margen_pct = (anuncio_venta - anuncio_compra) / anuncio_compra * 100
+    comision = cfg.get("p2p_comision_anuncio_pct", 0.0)  # Binance cobra al que publica el anuncio, por cada lado
+    margen_bruto_pct = (anuncio_venta - anuncio_compra) / anuncio_compra * 100
+    margen_pct = margen_bruto_pct - 2 * comision
     return {
+        "margen_bruto_pct": margen_bruto_pct, "comision_pct": comision,
         "fiat": fiat, "ask": ask, "bid": bid, "compra": compra[:3], "venta": venta[:3],
         "cruce_pct": cruce_pct, "cruce_operable": operable, "cruce_minimo": minimo,
         "cruce_viable": cruce_pct > 0 and operable >= minimo,
@@ -192,91 +195,86 @@ def dolar_implicito(an_ars: dict | None, an_usd: dict | None) -> dict:
     return out
 
 
-def _tabla(ofertas: list[Oferta], fiat: str) -> str:
-    filas = []
-    for i, o in enumerate(ofertas):
-        rep = f"{o.ordenes_mes}✔ {o.tasa * 100:.0f}%"
-        filas.append(f"{i + 1}. {_fmt(o.precio, fiat):>12}  {o.metodos_cortos[:18]:<18} {_k(o.minimo, fiat)}–{_k(o.maximo, fiat):<6} {rep}")
-    return "<pre>" + "\n".join(filas) + "</pre>"
+def _metodos(ofertas: list[Oferta], n: int = 3) -> str:
+    vistos: list[str] = []
+    for o in ofertas[:n]:
+        for m in o.metodos:
+            c = METODOS_CORTOS.get(m, m)
+            if c not in vistos:
+                vistos.append(c)
+    return "/".join(vistos[:4]) or "-"
 
 
-def pasos_cruce(an: dict) -> list[str]:
+def _rep(o: Oferta) -> str:
+    return f"{o.nombre} ({o.ordenes_mes} ops, {o.tasa * 100:.0f}%)"
+
+
+def _fiat_nombre(fiat: str) -> str:
+    return "pesos" if fiat == "ars" else "dólares"
+
+
+def bloque_accion(an: dict) -> list[str]:
+    """Lo primero que se lee: que hacer, donde y a que precio."""
     f = an["fiat"]
-    monto = min(an["cruce_operable"], an["monto"])
-    usdt = monto / an["ask"].precio
-    gan = monto * an["cruce_pct"] / 100
+    if an["cruce_viable"]:
+        monto = min(an["cruce_operable"], an["monto"])
+        usdt = monto / an["ask"].precio
+        gan = monto * an["cruce_pct"] / 100
+        return [
+            f"\U0001f4cc <b>QUÉ HACER: comprar y vender ya</b>  (cruce <b>{an['cruce_pct']:+.2f}%</b>)",
+            f"1. Comprale a <b>{an['ask'].nombre}</b> {usdt:,.0f} USDT a <b>{_fmt(an['ask'].precio, f)}</b> "
+            f"— pagás por {an['ask'].metodos_cortos}",
+            f"2. Vendele a <b>{an['bid'].nombre}</b> esos USDT a <b>{_fmt(an['bid'].precio, f)}</b> "
+            f"— te paga por {an['bid'].metodos_cortos}",
+            f"3. Ganás <b>~{_monto(gan, f)}</b> sobre {_monto(monto, f)}. Liberá el USDT solo con la plata acreditada.",
+        ]
+    if an["margen_pct"] > 0:
+        gan = an["monto"] * an["margen_pct"] / 100
+        com = f" (ya descontada la comisión de anuncio de {an['comision_pct']}%)" if an.get("comision_pct") else ""
+        return [
+            "\U0001f4cc <b>QUÉ HACER: publicar anuncios</b>  (no hay cruce)",
+            f"• Anuncio de <b>COMPRA</b> a <b>{_fmt(an['anuncio_compra'], f)}</b> → quedás primero entre los compradores",
+            f"• Anuncio de <b>VENTA</b> a <b>{_fmt(an['anuncio_venta'], f)}</b> → quedás primero entre los vendedores",
+            f"• Margen por vuelta: <b>{an['margen_pct']:+.2f}%</b> → ~{_monto(gan, f)} cada {_monto(an['monto'], f)}{com}",
+            f"• Necesitás: {_fiat_nombre(f)} en {_metodos(an['compra'] + an['venta'])} para comprar, y USDT en Binance para vender",
+        ]
+    return [f"\U0001f4cc <b>QUÉ HACER: nada por ahora</b>  (sin cruce y sin margen para anuncios: {an['margen_pct']:+.2f}%)"]
+
+
+def bloque_mercado(an: dict) -> list[str]:
+    f = an["fiat"]
+    a_, b_ = an["ask"], an["bid"]
+    filas = [
+        f"vende  {_fmt(a_.precio, f):>12}  {a_.metodos_cortos[:14]:<14} {_k(a_.minimo, f)}–{_k(a_.maximo, f)}",
+        f"compra {_fmt(b_.precio, f):>12}  {b_.metodos_cortos[:14]:<14} {_k(b_.minimo, f)}–{_k(b_.maximo, f)}",
+    ]
     return [
-        f"1️⃣ Comprá {usdt:,.0f} USDT a <b>{an['ask'].nombre}</b> a {_fmt(an['ask'].precio, f)} "
-        f"pagando con {an['ask'].metodos_cortos}.",
-        f"2️⃣ Apenas te liberen el USDT, vendeselo a <b>{an['bid'].nombre}</b> a {_fmt(an['bid'].precio, f)} "
-        f"(te paga por {an['bid'].metodos_cortos}).",
-        f"3️⃣ Liberá el USDT solo cuando veas la plata acreditada. Ganancia: <b>~{_monto(gan, f)}</b> "
-        f"sobre {_monto(monto, f)}.",
+        "\U0001f4ca <b>Mercado ahora</b> (mejor de cada lado, con tus métodos)",
+        "<pre>" + "\n".join(filas) + "</pre>",
+        f"<i>vende: {_rep(a_)} · compra: {_rep(b_)} · spread entre puntas {-an['cruce_pct']:+.2f}%</i>",
     ]
 
 
-def pasos_anuncios(an: dict) -> list[str]:
-    f = an["fiat"]
-    gan = an["monto"] * an["margen_pct"] / 100
-    return [
-        f"1️⃣ Publicá un anuncio de <b>compra</b> a {_fmt(an['anuncio_compra'], f)} "
-        f"(el mejor comprador paga {_fmt(an['bid'].precio, f)}; así quedás primero).",
-        f"2️⃣ Publicá un anuncio de <b>venta</b> a {_fmt(an['anuncio_venta'], f)} "
-        f"(el vendedor más barato pide {_fmt(an['ask'].precio, f)}).",
-        f"3️⃣ Cada vuelta completa (te venden y luego vendés) deja <b>{an['margen_pct']:+.2f}%</b>: "
-        f"~{_monto(gan, f)} por cada {_monto(an['monto'], f)}. Revisá los precios seguido, las puntas se mueven.",
-    ]
+REGLAS = ("<i>Reglas: liberá el USDT solo con la plata acreditada · los precios P2P cambian rápido, "
+          "revisá antes de publicar · elegí contrapartes con muchas ops y 100%.</i>")
+
+TITULO_FIAT = {"ars": "\U0001f1e6\U0001f1f7 PESOS", "usd": "\U0001f1fa\U0001f1f8 DÓLARES"}
 
 
 def formatear_informe(an_ars: dict | None, an_usd: dict | None, dolar: dict | None, cfg: dict) -> str:
-    from arbitraje import SEP, AVISO_P2P
-    out = ["\U0001f465 <b>Binance P2P — USDT</b>  <i>(tus métodos de pago)</i>"]
+    from arbitraje import SEP
+    montos = cfg.get("p2p_monto") or {}
+    out = [f"\U0001f465 <b>Binance P2P — USDT</b>  <i>tus métodos · "
+           f"{_monto(montos.get('ars', 0), 'ars')} / {_monto(montos.get('usd', 0), 'usd')}</i>"]
     for an in (an_ars, an_usd):
         if not an:
             continue
-        f = an["fiat"]
-        out += [SEP, f"<b>{'En pesos (ARS)' if f == 'ars' else 'En dólares (USD)'}</b>  monto {_monto(an['monto'], f)}",
-                "\U0001f7e2 Comprás a (vendedores)", _tabla(an["compra"], f),
-                "\U0001f534 Vendés a (compradores)", _tabla(an["venta"], f),
-                "\U0001f4d0 <b>Análisis</b>"]
-        if an["cruce_viable"]:
-            out.append(f"• Cruce comprar→vender: <b>{an['cruce_pct']:+.2f}%</b> \U0001f7e2 hasta {_monto(an['cruce_operable'], f)}")
-        else:
-            out.append(f"• Cruce comprar→vender: {an['cruce_pct']:+.2f}% (no hay, la venta paga menos que la compra)")
-        sem = "\U0001f7e2" if an["margen_pct"] >= cfg.get("umbral_p2p_anuncio_pct", 1.0) else ("\U0001f7e1" if an["margen_pct"] > 0 else "\U0001f534")
-        out.append(f"• Anuncios: comprá a {_fmt(an['anuncio_compra'], f)} y vendé a {_fmt(an['anuncio_venta'], f)} "
-                   f"→ <b>{an['margen_pct']:+.2f}%</b> por vuelta {sem}")
-    imp = dolar_implicito(an_ars, an_usd)
-    if imp:
-        out += [SEP, "\U0001f4b5 <b>Dólar implícito cruzando pesos y dólares</b>"]
-        out.append(f"• Comprar dólares (pesos→USDT→dólares): $ {imp['comprar_usd']:,.0f}")
-        out.append(f"• Vender dólares (dólares→USDT→pesos): $ {imp['vender_usd']:,.0f}")
-        if dolar:
-            of, mep = dolar.get("oficial") or {}, ((dolar.get("mep") or {}).get("al30") or {}).get("24hs") or {}
-            ref = []
-            if of.get("ask"):
-                ref.append(f"oficial $ {of['ask']:,.0f}")
-            if mep.get("price"):
-                ref.append(f"MEP $ {mep['price']:,.0f}")
-            if ref:
-                out.append("<i>Referencia: " + " · ".join(ref) + "</i>")
-    # que hacer
-    out += [SEP, "\U0001f4cb <b>Qué hacer ahora</b>"]
-    mejor = None
-    for an in (an_ars, an_usd):
-        if an and an["cruce_viable"] and (mejor is None or an["cruce_pct"] > mejor[1]):
-            mejor = ("cruce", an["cruce_pct"], an)
-    if mejor is None:
-        for an in (an_ars, an_usd):
-            if an and an["margen_pct"] > 0 and (mejor is None or an["margen_pct"] > mejor[1]):
-                mejor = ("anuncio", an["margen_pct"], an)
-    if mejor is None:
-        out.append("Hoy no hay margen ni para cruzar ni para anunciar: las puntas están cruzadas en contra. Esperá la alerta.")
-    elif mejor[0] == "cruce":
-        out += pasos_cruce(mejor[2])
-    else:
-        out += pasos_anuncios(mejor[2])
-    out.append(AVISO_P2P)
+        out += [SEP, f"<b>{TITULO_FIAT[an['fiat']]}</b>"]
+        out += bloque_accion(an)
+        out += bloque_mercado(an)
+    if not an_ars and not an_usd:
+        out.append("No pude leer las ofertas de Binance P2P ahora.")
+    out += [SEP, REGLAS]
     return "\n".join(out)
 
 
@@ -311,19 +309,13 @@ def actualizar(abiertas: dict, actuales: dict, ahora: float) -> tuple[list[str],
 
 
 def formatear_alerta(clave: str, an: dict) -> str:
-    from arbitraje import SEP, AVISO_P2P
-    f = an["fiat"]
-    nombre = "pesos" if f == "ars" else "dólares"
+    from arbitraje import SEP
+    nombre = _fiat_nombre(an["fiat"])
     if clave.startswith("cruce"):
-        out = [f"\U0001f6a8 <b>CRUCE P2P en {nombre}</b>   ▲ <b>{an['cruce_pct']:+.2f}%</b>", SEP,
-               "Comprar a una persona y venderle a otra, todo dentro de Binance, sin transferencias.", ""]
-        out += pasos_cruce(an)
+        titulo = f"\U0001f6a8 <b>CRUCE P2P en {nombre}</b>   ▲ <b>{an['cruce_pct']:+.2f}%</b>"
     else:
-        out = [f"\U0001f4e3 <b>MARGEN PARA ANUNCIOS P2P en {nombre}</b>   ▲ <b>{an['margen_pct']:+.2f}%</b>", SEP,
-               "Las puntas están lo bastante separadas para publicar tus anuncios y cobrar la diferencia.", ""]
-        out += pasos_anuncios(an)
-    out.append(AVISO_P2P)
-    return "\n".join(out)
+        titulo = f"\U0001f4e3 <b>MARGEN PARA ANUNCIOS P2P en {nombre}</b>   ▲ <b>{an['margen_pct']:+.2f}%</b>"
+    return "\n".join([titulo, SEP] + bloque_accion(an) + bloque_mercado(an) + [REGLAS])
 
 
 def formatear_cierres(cerradas: list[dict]) -> str:
