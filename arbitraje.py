@@ -129,11 +129,26 @@ def filtrar_cotizaciones(cotizaciones: dict, max_antiguedad: int, ahora: float,
             continue
         validas[nombre] = q
     if len(validas) >= 3 and max_desvio_pct > 0:
-        mids = sorted((q["totalAsk"] + q["totalBid"]) / 2 for q in validas.values())
-        mediana = mids[len(mids) // 2]
+        # Cada lado se juzga por separado: el precio de compra contra la mediana de compras y el de
+        # venta contra la mediana de ventas. Un exchange con un lado muy alejado queda valido solo
+        # para el otro lado (ese lado se marca None). Si los dos estan alejados, se descarta.
         lim = max_desvio_pct / 100
-        validas = {n: q for n, q in validas.items()
-                   if abs(q["totalAsk"] / mediana - 1) <= lim and abs(q["totalBid"] / mediana - 1) <= lim}
+        asks = sorted(q["totalAsk"] for q in validas.values())
+        bids = sorted(q["totalBid"] for q in validas.values())
+        med_ask, med_bid = asks[len(asks) // 2], bids[len(bids) // 2]
+        filtradas = {}
+        for n, q in validas.items():
+            ok_ask = abs(q["totalAsk"] / med_ask - 1) <= lim
+            ok_bid = abs(q["totalBid"] / med_bid - 1) <= lim
+            if not ok_ask and not ok_bid:
+                continue
+            q2 = dict(q)
+            if not ok_ask:
+                q2["totalAsk"] = q2["ask"] = None
+            if not ok_bid:
+                q2["totalBid"] = q2["bid"] = None
+            filtradas[n] = q2
+        validas = filtradas
     return validas
 
 
@@ -149,6 +164,8 @@ def detectar_oportunidades(cotizaciones: dict, umbral_pct: float, max_antiguedad
             if ex_compra == ex_venta:
                 continue
             compra, venta = qc["totalAsk"], qv["totalBid"]
+            if compra is None or venta is None:
+                continue  # ese lado fue descartado por el filtro de desvio
             spread = (venta - compra) / compra * 100
             if spread >= umbral_pct:
                 ops.append(Oportunidad(par, ex_compra, compra, ex_venta, venta, spread))
@@ -385,8 +402,10 @@ def ciclo(cfg: dict, cooldown: Cooldown, sin_comandos: bool = False) -> None:
 
 def alternativas(validas: dict, o: Oportunidad, n: int = 2) -> tuple[list, list]:
     """Otros lugares donde comprar (asks mas baratos) y vender (bids mas altos), sin los elegidos."""
-    compras = sorted(((ex, q["totalAsk"]) for ex, q in validas.items() if ex != o.comprar_en), key=lambda x: x[1])[:n]
-    ventas = sorted(((ex, q["totalBid"]) for ex, q in validas.items() if ex != o.vender_en), key=lambda x: -x[1])[:n]
+    compras = sorted(((ex, q["totalAsk"]) for ex, q in validas.items() if ex != o.comprar_en and q["totalAsk"]),
+                     key=lambda x: x[1])[:n]
+    ventas = sorted(((ex, q["totalBid"]) for ex, q in validas.items() if ex != o.vender_en and q["totalBid"]),
+                    key=lambda x: -x[1])[:n]
     return compras, ventas
 
 

@@ -78,10 +78,12 @@ def construir_aristas(cotizaciones: dict[str, dict | None], dolar: dict | None, 
                                          a.desvio_para(par, cfg))
         for ex, q in validas.items():
             ask, bid = q["totalAsk"], q["totalBid"]
-            aristas.append(Arista(FIAT, COIN, 1 / ask, ex, ask, simbolo,
-                                  f"Comprás {COIN} con {con}"))
-            aristas.append(Arista(COIN, FIAT, bid, ex, bid, simbolo,
-                                  f"Vendés {COIN} por {con}"))
+            if ask:
+                aristas.append(Arista(FIAT, COIN, 1 / ask, ex, ask, simbolo,
+                                      f"Comprás {COIN} con {con}"))
+            if bid:
+                aristas.append(Arista(COIN, FIAT, bid, ex, bid, simbolo,
+                                      f"Vendés {COIN} por {con}"))
 
     if dolar:
         of = dolar.get("oficial") or {}

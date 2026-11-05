@@ -67,8 +67,10 @@ def _bloque_fiat(fiat: str, cot: dict | None, ahora: float, max_antiguedad: int,
     validas = a.filtrar_cotizaciones(cot or {}, max_antiguedad, ahora, excluir, max_desvio_pct)
     if not validas:
         return [f"{bandera} <b>{titulo} ({fiat})</b>: sin cotizaciones válidas ahora"], False
-    compra = sorted(validas.items(), key=lambda kv: kv[1]["totalAsk"])[:n]
-    venta = sorted(validas.items(), key=lambda kv: -kv[1]["totalBid"])[:n]
+    compra = sorted(((ex, q) for ex, q in validas.items() if q["totalAsk"]), key=lambda kv: kv[1]["totalAsk"])[:n]
+    venta = sorted(((ex, q) for ex, q in validas.items() if q["totalBid"]), key=lambda kv: -kv[1]["totalBid"])[:n]
+    if not compra or not venta:
+        return [f"{bandera} <b>{titulo} ({fiat})</b>: sin cotizaciones válidas ahora"], []
     ancho = max(len(a.marcar(ex)) for ex, _ in compra + venta)
 
     def tabla(filas, campo):
@@ -140,7 +142,7 @@ def resp_dolar(dolar: dict, stables: dict[str, dict], ahora: float | None = None
 
     mejores_stable = []
     for coin, cot in stables.items():
-        validas = a.filtrar_cotizaciones(cot, max_antiguedad, ahora, excluir)
+        validas = {ex: q for ex, q in a.filtrar_cotizaciones(cot, max_antiguedad, ahora, excluir).items() if q["totalAsk"]}
         if validas:
             ex, q = min(validas.items(), key=lambda kv: kv[1]["totalAsk"])
             mejores_stable.append((q["totalAsk"], coin.upper(), ex))
