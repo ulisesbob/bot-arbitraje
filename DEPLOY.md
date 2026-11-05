@@ -48,13 +48,13 @@ Configurar (una vez):
 2. Loguear la herramienta (abre el navegador):
 
 ```bash
-cd "C:\Users\Ulise\Desktop\strat qqq 38%\cripto-arbitraje\cloudflare"; npx wrangler login
+cd "C:\Users\Ulise\Desktop\cripto-arbitraje\cloudflare"; npx wrangler login
 ```
 
 3. Correr el script, que redespliega Vercel, crea el namespace KV, carga el secreto y despliega el Worker:
 
 ```bash
-cd "C:\Users\Ulise\Desktop\strat qqq 38%\cripto-arbitraje"; powershell -ExecutionPolicy Bypass -File deploy\cloudflare_setup.ps1
+cd "C:\Users\Ulise\Desktop\cripto-arbitraje"; powershell -ExecutionPolicy Bypass -File deploy\cloudflare_setup.ps1
 ```
 
 4. Deshabilitar el workflow de GitHub Actions (si no, los dos escanean con estados
@@ -159,7 +159,7 @@ Necesitás: una máquina con Ubuntu o Debian y acceso por SSH.
 1. Copiá la carpeta entera al servidor (con `config.json` ya cargado):
 
 ```bash
-scp -r "C:\Users\Ulise\Desktop\strat qqq 38%\cripto-arbitraje" usuario@IP_DEL_SERVIDOR:~/
+scp -r "C:\Users\Ulise\Desktop\cripto-arbitraje" usuario@IP_DEL_SERVIDOR:~/
 ```
 
 2. Entrá y corré el instalador:
