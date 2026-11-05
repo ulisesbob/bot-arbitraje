@@ -13,3 +13,4 @@ rulos.json
 # Cloudflare
 .wrangler/
 node_modules/
+abiertas.json

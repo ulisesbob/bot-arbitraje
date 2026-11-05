@@ -90,20 +90,21 @@ def _bloque_fiat(fiat: str, cot: dict | None, ahora: float, max_antiguedad: int,
 def resp_moneda(coin: str, cot: dict, fiat: str = "ARS", ahora: float | None = None,
                 max_antiguedad: int = 600, max_desvio_pct: float = 5.0, n: int = 3,
                 excluir: set | None = None, cot_usd: dict | None = None,
-                max_desvio_usd_pct: float | None = None) -> str:
+                max_desvio_usd_pct: float | None = None, excluir_usd: set | None = None) -> str:
     """Una moneda contra `fiat`; si se pasa cot_usd, agrega el bloque en dólares."""
     ahora = ahora or time.time()
     nombre = MONEDAS.get(coin, coin.upper())
     icono = a.ICONO.get(coin, "\U0001fa99")
-    bloques = [(fiat, cot, max_desvio_pct)]
+    bloques = [(fiat, cot, max_desvio_pct, excluir)]
     if cot_usd is not None and fiat != "USD":
-        bloques.append(("USD", cot_usd, max_desvio_usd_pct if max_desvio_usd_pct is not None else max_desvio_pct))
+        bloques.append(("USD", cot_usd, max_desvio_usd_pct if max_desvio_usd_pct is not None else max_desvio_pct,
+                        excluir_usd if excluir_usd is not None else excluir))
     out = [f"{icono} <b>{nombre}</b>", SEP]
     hay_p2p = False
-    for i, (f, c, desvio) in enumerate(bloques):
+    for i, (f, c, desvio, excl) in enumerate(bloques):
         if i:
             out += ["", SEP]
-        lineas, p2p = _bloque_fiat(f, c, ahora, max_antiguedad, desvio, n, excluir)
+        lineas, p2p = _bloque_fiat(f, c, ahora, max_antiguedad, desvio, n, excl)
         out += lineas
         hay_p2p |= p2p
     out.append("<i>Precios con comisiones, según CriptoYa.</i>")
@@ -245,7 +246,8 @@ def manejar(texto: str, cfg: dict, persistente: bool = True) -> str:
             return resp_moneda(cmd, descargas.get(f"{cmd}/ars") or {}, "ARS",
                                max_antiguedad=cfg["max_antiguedad_seg"], max_desvio_pct=cfg["max_desvio_pct"],
                                excluir=excluir, cot_usd=descargas.get(f"{cmd}/usd") if len(pares) > 1 else None,
-                               max_desvio_usd_pct=cfg.get("max_desvio_usd_pct"))
+                               max_desvio_usd_pct=cfg.get("max_desvio_usd_pct"),
+                               excluir_usd=a.excluidos_para(f"{cmd}/usd", cfg))
         if cmd == "dolar":
             descargas = _descargar_varios([f"{c}/{fiat}" for c in ("usdt", "usdc", "dai")], cfg["volumen"])
             stables = {par.split("/")[0]: cot for par, cot in descargas.items() if cot}
@@ -259,7 +261,7 @@ def manejar(texto: str, cfg: dict, persistente: bool = True) -> str:
                     res.append((par, None))
                     continue
                 ops = a.detectar_oportunidades(cot, -100, cfg["max_antiguedad_seg"], ahora, par,
-                                               excluir, a.desvio_para(par, cfg))
+                                               a.excluidos_para(par, cfg), a.desvio_para(par, cfg))
                 res.append((par, ops[0] if ops else None))
             return resp_arbitraje(res, cfg["umbral_pct"])
         if cmd == "rulos":

@@ -32,7 +32,8 @@ Se crea solo la primera vez. Campos:
 | `umbral_pct` | spread mínimo para alertar | 1.5 |
 | `intervalo_seg` | cada cuánto consulta | 60 |
 | `max_antiguedad_seg` | descarta cotizaciones más viejas que esto | 600 |
-| `cooldown_seg` | no repite la misma alerta (par + exchanges) durante este tiempo; se guarda en `cooldown.json` y sobrevive reinicios | 900 |
+| `cooldown_seg` | si una oportunidad se cierra y reabre dentro de este tiempo, no vuelve a avisar | 900 |
+| `excluir_por_fiat` | exclusiones solo para un fiat; por defecto saca los P2P de los pares en dólares (ahí se paga por bancos del exterior con comisiones altas) | `{"usd": ["*p2p", "p2pme"]}` |
 | `excluir_exchanges` | exchanges a ignorar en alertas, rulos y comandos; `"*p2p"` excluiría todos los P2P. Por defecto los P2P entran, marcados con 👥 y una advertencia de verificar la cotización | `[]` |
 | `max_desvio_pct` | descarta precios alejados más de esto de la mediana (ofertas basura de P2P); `0` apaga el filtro | 5.0 |
 | `max_desvio_usd_pct` | lo mismo para los pares en dólares, más estricto: ahí conviven dólares locales y de cuentas en el exterior (Xapo, Astropay) que cotizan 4 a 6% más bajo sin ser arbitrables | 3.0 |
@@ -95,6 +96,8 @@ por dólares y stablecoins, por ejemplo: comprar dólar oficial en el banco, con
 comprar USDT en un exchange, y vender el USDT por pesos en otro. Usa el dólar oficial y el
 MEP de CriptoYa como patas bancarias, y las cotizaciones de USDT, USDC y DAI contra pesos
 y contra dólares como patas cripto. Para cada secuencia elige el mejor exchange por pata.
+
+Las alertas de arbitraje simple funcionan igual que las de rulos: una cuando la oportunidad se abre y otra cuando se cierra (con el máximo que alcanzó y cuánto duró), nunca repetidas en el medio.
 
 Cuando un rulo supera `umbral_rulo_pct` manda una alerta con cada pata, su precio, si es
 P2P, y advertencias sobre transferencias y la pata bancaria. Cuando deja de superar el

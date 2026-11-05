@@ -35,6 +35,8 @@ CONFIG_DEFAULT = {
     "max_antiguedad_seg": 600,
     "cooldown_seg": 900,
     "excluir_exchanges": [],
+    # P2P solo en pares en dolares: ahi se paga por bancos y billeteras del exterior con comisiones altas
+    "excluir_por_fiat": {"usd": ["*p2p", "p2pme"]},
     "max_desvio_pct": 5.0,
     "max_desvio_usd_pct": 3.0,
     "incluir_pasos": True,
@@ -80,6 +82,12 @@ def desvio_para(par: str, cfg: dict) -> float:
     if fiat == "usd":
         return cfg.get("max_desvio_usd_pct", cfg["max_desvio_pct"])
     return cfg["max_desvio_pct"]
+
+
+def excluidos_para(par: str, cfg: dict) -> set:
+    """Exclusiones generales mas las propias del fiat del par (ej. P2P solo en dolares)."""
+    fiat = par.lower().split("/")[-1]
+    return set(cfg["excluir_exchanges"]) | set((cfg.get("excluir_por_fiat") or {}).get(fiat, []))
 
 
 def esta_excluido(nombre: str, excluir: set) -> bool:
@@ -190,6 +198,20 @@ def cargar_config(escribir: bool = True) -> dict:
     cfg["telegram_token"] = limpiar(cfg["telegram_token"] or os.environ.get("TELEGRAM_BOT_TOKEN", ""))
     cfg["telegram_chat_id"] = limpiar(str(cfg["telegram_chat_id"] or os.environ.get("TELEGRAM_CHAT_ID", "")))
     return cfg
+
+
+def _leer_json(path: Path) -> dict:
+    try:
+        return json.loads(path.read_text(encoding="utf-8")) if path.exists() else {}
+    except (OSError, ValueError):
+        return {}
+
+
+def _escribir_json(path: Path, datos: dict) -> None:
+    try:
+        path.write_text(json.dumps(datos), encoding="utf-8")
+    except OSError as e:
+        print(f"[estado] no pude guardar {path.name}: {e}")
 
 
 def guardar_config(cfg: dict) -> None:
@@ -368,6 +390,40 @@ def formatear(o: Oportunidad, volumen: float, incluir_pasos: bool = True,
     return msg
 
 
+def formatear_cierres(cerradas: list[dict]) -> str:
+    out = ["✅ <b>SE CERRÓ EL ARBITRAJE</b>", SEP]
+    for c in cerradas:
+        ahora = f", ahora {c['ahora']:+.2f}%" if c.get("ahora") is not None else ""
+        dur = f", duró {c['duracion_min']:.0f} min" if c.get("duracion_min") else ""
+        out.append(f"• {c['par'].upper()} {marcar(c['comprar_en'])} → {marcar(c['vender_en'])}  "
+                   f"(llegó a <b>{c['max']:+.2f}%</b>{ahora}{dur})")
+    return "\n".join(out)
+
+
+def actualizar_abiertas(abiertas: dict, actuales: dict[str, Oportunidad], todas: dict[str, Oportunidad],
+                        ahora: float) -> tuple[list[str], list[dict], dict]:
+    """Arbitraje simple con apertura y cierre, igual que los rulos.
+    abiertas: {clave: {"max", "desde", ...}} de la pasada anterior.
+    actuales: {clave: Oportunidad} que superan el umbral ahora. todas: cada combinacion vista, supere o no.
+    Devuelve (claves nuevas, cerradas, estado nuevo)."""
+    nuevo: dict = {}
+    nuevas, cerradas = [], []
+    for clave, o in actuales.items():
+        previo = abiertas.get(clave)
+        if previo is None:
+            nuevas.append(clave)
+            nuevo[clave] = {"max": o.spread_pct, "desde": ahora, "par": o.par,
+                            "comprar_en": o.comprar_en, "vender_en": o.vender_en}
+        else:
+            nuevo[clave] = dict(previo, max=max(previo["max"], o.spread_pct))
+    for clave, previo in abiertas.items():
+        if clave not in actuales:
+            actual = todas.get(clave)
+            cerradas.append(dict(previo, ahora=actual.spread_pct if actual else None,
+                                 duracion_min=(ahora - previo.get("desde", ahora)) / 60))
+    return nuevas, cerradas, nuevo
+
+
 def texto_plano(html: str) -> str:
     for tag in ("<b>", "</b>", "<i>", "</i>", "<pre>", "</pre>", "<code>", "</code>"):
         html = html.replace(tag, "")
@@ -375,35 +431,55 @@ def texto_plano(html: str) -> str:
 
 
 def pasada(cfg: dict, cooldown: Cooldown, mostrar_resumen: bool = True,
-           rulos_abiertos: dict | None = None) -> list[Oportunidad]:
+           rulos_abiertos: dict | None = None, abiertas: dict | None = None) -> list[Oportunidad]:
     """Una pasada completa: arbitraje simple + rulos.
-    rulos_abiertos: estado de rulos en memoria (se modifica en el lugar); si es None se
-    usa el archivo rulos.json."""
+    El arbitraje simple avisa una vez cuando una oportunidad se abre y una vez cuando se cierra.
+    rulos_abiertos / abiertas: estado en memoria (se modifican en el lugar); si son None se
+    usan los archivos rulos.json / abiertas.json."""
     ahora = time.time()
-    excluir = set(cfg["excluir_exchanges"])
     alertadas = []
     cotizaciones = descargar_varios(cfg["pares"], cfg["volumen"])
+    archivo_abiertas = None
+    if abiertas is None:
+        archivo_abiertas = Path(__file__).with_name("abiertas.json")
+        abiertas = _leer_json(archivo_abiertas)
+    actuales: dict[str, Oportunidad] = {}
+    vistas: dict[str, Oportunidad] = {}
+    validas_por_par: dict[str, dict] = {}
     for par in cfg["pares"]:
         cot = cotizaciones.get(par)
         if cot is None:
             continue
         desvio = desvio_para(par, cfg)
-        ops = detectar_oportunidades(cot, cfg["umbral_pct"], cfg["max_antiguedad_seg"], ahora, par, excluir, desvio)
-        if mostrar_resumen:
-            todas = detectar_oportunidades(cot, -100, cfg["max_antiguedad_seg"], ahora, par, excluir, desvio)
-            if todas:
-                m = todas[0]
-                print(f"[{par}] mejor spread {m.spread_pct:+.2f}%  "
-                      f"comprar {m.comprar_en} {precio(m.precio_compra)} / vender {m.vender_en} {precio(m.precio_venta)}")
-            else:
+        excluir = excluidos_para(par, cfg)
+        todas = detectar_oportunidades(cot, -100, cfg["max_antiguedad_seg"], ahora, par, excluir, desvio)
+        if not todas:
+            if mostrar_resumen:
                 print(f"[{par}] sin cotizaciones validas")
-        if not ops:
             continue
-        o = ops[0]  # solo la mejor combinacion por par, para no spamear
-        if not cooldown.permitir(par, o.comprar_en, o.vender_en, ahora):
-            continue
-        validas = filtrar_cotizaciones(cot, cfg["max_antiguedad_seg"], ahora, excluir, desvio)
-        msg = formatear(o, cfg["volumen"], cfg["incluir_pasos"], alternativas(validas, o))
+        m = todas[0]
+        if mostrar_resumen:
+            print(f"[{par}] mejor spread {m.spread_pct:+.2f}%  "
+                  f"comprar {m.comprar_en} {precio(m.precio_compra)} / vender {m.vender_en} {precio(m.precio_venta)}")
+        for o in todas:
+            vistas.setdefault(f"{par}|{o.comprar_en}|{o.vender_en}", o)
+        if m.spread_pct >= cfg["umbral_pct"]:
+            actuales[f"{par}|{m.comprar_en}|{m.vender_en}"] = m  # solo la mejor combinacion por par
+            validas_por_par[par] = filtrar_cotizaciones(cot, cfg["max_antiguedad_seg"], ahora, excluir, desvio)
+    nuevas, cerradas, estado = actualizar_abiertas(abiertas, actuales, vistas, ahora)
+    abiertas.clear()
+    abiertas.update(estado)
+    if archivo_abiertas:
+        _escribir_json(archivo_abiertas, abiertas)
+    if cerradas:
+        msg = formatear_cierres(cerradas)
+        print("\n" + texto_plano(msg) + "\n")
+        enviar_telegram(cfg["telegram_token"], cfg["telegram_chat_id"], msg)
+    for clave in nuevas:
+        o = actuales[clave]
+        if not cooldown.permitir(o.par, o.comprar_en, o.vender_en, ahora):
+            continue  # se cerro y reabrio enseguida: no repetir dentro del cooldown
+        msg = formatear(o, cfg["volumen"], cfg["incluir_pasos"], alternativas(validas_por_par[o.par], o))
         print("\n" + texto_plano(msg) + "\n")
         enviar_telegram(cfg["telegram_token"], cfg["telegram_chat_id"], msg)
         alertadas.append(o)

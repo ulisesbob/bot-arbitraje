@@ -66,7 +66,8 @@ def test_detecta_nuevos_persistentes_y_cerrados():
 
 def test_formato_marca_p2p_y_transferencias():
     cots = {"usdt/ars": {"bybitp2p": q(1670, 1662)}, "usdt/usd": {"binancep2p": q(1.043, 1.030)}}
-    rulo = r.buscar_rulos(r.construir_aristas(cots, DOLAR, CFG, NOW))[0]
+    cfg = dict(CFG, excluir_por_fiat={})  # este test quiere ver un P2P en la pata en dolares
+    rulo = r.buscar_rulos(r.construir_aristas(cots, DOLAR, cfg, NOW))[0]
     txt = a.texto_plano(r.formatear_rulo(rulo, 100_000))
     assert "RULO ARS → USD → USDT → ARS" in txt
     assert "Comprás dólar oficial en banco a $ 1,547.00" in txt

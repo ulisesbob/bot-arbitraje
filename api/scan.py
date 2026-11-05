@@ -28,16 +28,18 @@ def escanear(estado: dict) -> dict:
     cfg = a.cargar_config(escribir=False)
     cooldown_estado = dict(estado.get("cooldown") or {})
     rulos_abiertos = dict(estado.get("rulos") or {})
+    abiertas = dict(estado.get("abiertas") or {})
     cooldown = a.Cooldown(cfg["cooldown_seg"], estado=cooldown_estado)
     salida = io.StringIO()
     with redirect_stdout(salida):
-        alertadas = a.pasada(cfg, cooldown, mostrar_resumen=True, rulos_abiertos=rulos_abiertos)
+        alertadas = a.pasada(cfg, cooldown, mostrar_resumen=True, rulos_abiertos=rulos_abiertos, abiertas=abiertas)
     log = salida.getvalue()
     print(log, end="")
     mejor = [l for l in log.splitlines() if "mejor spread" in l or "[rulos] mejor" in l]
     return {
-        "estado": {"cooldown": cooldown.estado, "rulos": rulos_abiertos},
+        "estado": {"cooldown": cooldown.estado, "rulos": rulos_abiertos, "abiertas": abiertas},
         "alertas": len(alertadas),
+        "abiertas": len(abiertas),
         "rulos_abiertos": len(rulos_abiertos),
         "resumen": mejor,
         "ms": int((time.time() - t0) * 1000),
