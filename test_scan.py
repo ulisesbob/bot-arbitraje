@@ -19,7 +19,7 @@ def test_escanear_devuelve_estado_nuevo(monkeypatch):
     NOW = time.time()
     q = lambda ask, bid: {"totalAsk": ask, "totalBid": bid, "time": NOW}
     cots = {"usdt/ars": {"exA": q(1600, 1590), "exB": q(1660, 1650), "exC": q(1640, 1630)}}
-    monkeypatch.setattr(a, "descargar_varios", lambda pares, vol: cots)
+    monkeypatch.setattr(a, "descargar_varios", lambda pares, vol, cfg=None: cots)
     monkeypatch.setattr(a, "obtener_dolar", lambda: {"oficial": {"ask": 1547, "bid": 1500}})
     enviados = []
     monkeypatch.setattr(a, "enviar_telegram", lambda t, c, m: enviados.append(m) or True)

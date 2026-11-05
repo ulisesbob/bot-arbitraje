@@ -41,6 +41,9 @@ Se crea solo la primera vez. Campos:
 | `umbral_rulo_pct` | rendimiento mínimo de un rulo para alertar | 2.0 |
 | `volumen_rulo` | monto en pesos sobre el que se calcula la ganancia del rulo | 100000 |
 | `max_patas` | largo máximo del rulo | 4 |
+| `p2p_binance_directo` | consultar Binance P2P directo en vez del precio de CriptoYa, filtrado por tus métodos de pago y un monto realista. CriptoYa muestra la mejor oferta de cualquiera, que en dólares suele pedir un banco de Panamá o Wise | `true` |
+| `p2p_metodos` | identificadores de Binance de tus métodos de pago (Mercado Pago, Ualá, transferencia bancaria, Santander, Brubank, Naranja X). Evitá los genéricos como `BBVABank`, que matchean vendedores de otros países | ver código |
+| `p2p_monto` | monto por fiat con el que se buscan ofertas (las ofertas tienen mínimo y máximo) | usd 500, ars 500000 |
 | `telegram_token` / `telegram_chat_id` | credenciales de Telegram | vacío |
 
 Si dejás esos campos vacíos, se usan las variables de entorno `TELEGRAM_BOT_TOKEN` y

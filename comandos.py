@@ -220,7 +220,7 @@ _descargar_varios = a.descargar_varios
 
 def resp_rulos(cfg: dict) -> str:
     import rulos
-    cotizaciones = _descargar_varios(cfg["pares"], cfg["volumen"])
+    cotizaciones = _descargar_varios(cfg["pares"], cfg["volumen"], cfg)
     try:
         dolar = obtener_dolar()
     except Exception:  # noqa: BLE001
@@ -242,21 +242,21 @@ def manejar(texto: str, cfg: dict, persistente: bool = True) -> str:
         monedas_cfg = {p.split("/")[0] for p in cfg["pares"]}
         if cmd in MONEDAS or cmd in monedas_cfg:
             pares = [f"{cmd}/ars"] + ([f"{cmd}/usd"] if f"{cmd}/usd" in cfg["pares"] or cmd in MONEDAS else [])
-            descargas = _descargar_varios(pares, cfg["volumen"])
+            descargas = _descargar_varios(pares, cfg["volumen"], cfg)
             return resp_moneda(cmd, descargas.get(f"{cmd}/ars") or {}, "ARS",
                                max_antiguedad=cfg["max_antiguedad_seg"], max_desvio_pct=cfg["max_desvio_pct"],
                                excluir=excluir, cot_usd=descargas.get(f"{cmd}/usd") if len(pares) > 1 else None,
                                max_desvio_usd_pct=cfg.get("max_desvio_usd_pct"),
                                excluir_usd=a.excluidos_para(f"{cmd}/usd", cfg))
         if cmd == "dolar":
-            descargas = _descargar_varios([f"{c}/{fiat}" for c in ("usdt", "usdc", "dai")], cfg["volumen"])
+            descargas = _descargar_varios([f"{c}/{fiat}" for c in ("usdt", "usdc", "dai")], cfg["volumen"], cfg)
             stables = {par.split("/")[0]: cot for par, cot in descargas.items() if cot}
             return resp_dolar(obtener_dolar(), stables, max_antiguedad=cfg["max_antiguedad_seg"],
                               excluir=excluir)
         if cmd == "arbitraje":
             ahora = time.time()
             res = []
-            for par, cot in _descargar_varios(cfg["pares"], cfg["volumen"]).items():
+            for par, cot in _descargar_varios(cfg["pares"], cfg["volumen"], cfg).items():
                 if cot is None:
                     res.append((par, None))
                     continue

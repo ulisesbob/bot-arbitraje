@@ -37,6 +37,14 @@ CONFIG_DEFAULT = {
     "excluir_exchanges": [],
     # exclusiones solo para un fiat, ej. {"usd": ["*p2p"]}; vacio: los P2P entran en todos los pares
     "excluir_por_fiat": {},
+    # Binance P2P consultado directo, con los metodos de pago que tenes y un monto realista.
+    # Identificadores de Binance: MercadoPagoNew, UalaNew, BankArgentina (transferencia bancaria),
+    # SantanderArgentina, BancoBrubankNew, NaranjaX, Beloapp, personalpay.
+    # Ojo con los genericos como BBVABank: matchean vendedores de Peru/Espana con precios que no son para vos.
+    "p2p_binance_directo": True,
+    "p2p_metodos": ["MercadoPagoNew", "UalaNew", "BankArgentina", "SantanderArgentina", "BancoBrubankNew",
+                    "NaranjaX"],
+    "p2p_monto": {"usd": 500, "ars": 500000},
     "max_desvio_pct": 5.0,
     "max_desvio_usd_pct": 3.0,
     "incluir_pasos": True,
@@ -239,8 +247,9 @@ def obtener_dolar() -> dict:
         return json.loads(r.read().decode("utf-8"))
 
 
-def descargar_varios(pares: list[str], volumen: float) -> dict[str, dict | None]:
-    """Descarga varios pares en paralelo. None donde fallo."""
+def descargar_varios(pares: list[str], volumen: float, cfg: dict | None = None) -> dict[str, dict | None]:
+    """Descarga varios pares en paralelo. None donde fallo.
+    Con cfg y p2p_binance_directo, reemplaza binancep2p por la cotizacion directa filtrada."""
     from concurrent.futures import ThreadPoolExecutor
 
     def uno(par):
@@ -251,7 +260,22 @@ def descargar_varios(pares: list[str], volumen: float) -> dict[str, dict | None]
             return par, None
     # pocos hilos: CriptoYa devuelve 429 si le llegan muchas peticiones juntas
     with ThreadPoolExecutor(max_workers=min(3, max(1, len(pares)))) as ex:
-        return dict(ex.map(uno, pares))
+        cotizaciones = dict(ex.map(uno, pares))
+    if cfg and cfg.get("p2p_binance_directo"):
+        import p2p
+        aplicar_p2p_paralelo(cotizaciones, cfg, p2p)
+    return cotizaciones
+
+
+def aplicar_p2p_paralelo(cotizaciones: dict, cfg: dict, p2p) -> None:
+    """p2p.aplicar() par por par, con las consultas a Binance en paralelo."""
+    from concurrent.futures import ThreadPoolExecutor
+    pares = [p for p, c in cotizaciones.items() if c and "binancep2p" in c and p.split("/")[0] in p2p.ACTIVOS]
+    if not pares:
+        return
+    with ThreadPoolExecutor(max_workers=min(4, len(pares))) as ex:
+        resultados = list(ex.map(lambda par: p2p.aplicar({par: cotizaciones[par]}, cfg).get(par), pares))
+    print("[p2p] binance directo: " + ", ".join(f"{p}={r}" for p, r in zip(pares, resultados)))
 
 
 def enviar_telegram(token: str, chat_id: str, texto: str) -> bool:
@@ -438,7 +462,7 @@ def pasada(cfg: dict, cooldown: Cooldown, mostrar_resumen: bool = True,
     usan los archivos rulos.json / abiertas.json."""
     ahora = time.time()
     alertadas = []
-    cotizaciones = descargar_varios(cfg["pares"], cfg["volumen"])
+    cotizaciones = descargar_varios(cfg["pares"], cfg["volumen"], cfg)
     archivo_abiertas = None
     if abiertas is None:
         archivo_abiertas = Path(__file__).with_name("abiertas.json")

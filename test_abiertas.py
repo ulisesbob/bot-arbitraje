@@ -32,7 +32,7 @@ def test_pasada_avisa_una_vez_al_abrir_y_una_al_cerrar(monkeypatch):
     NOW = time.time()
     q = lambda ask, bid: {"totalAsk": ask, "totalBid": bid, "time": NOW}
     cots = {"usdt/ars": {"exA": q(1600, 1590), "exB": q(1660, 1650), "exC": q(1640, 1610)}}
-    monkeypatch.setattr(a, "descargar_varios", lambda pares, vol: cots)
+    monkeypatch.setattr(a, "descargar_varios", lambda pares, vol, cfg=None: cots)
     enviados = []
     monkeypatch.setattr(a, "enviar_telegram", lambda t, c, m: enviados.append(m) or True)
     cfg = dict(a.CONFIG_DEFAULT, pares=["usdt/ars"], excluir_exchanges=[], telegram_token="t",
