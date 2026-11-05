@@ -139,13 +139,15 @@ def test_comision_de_anuncio_descuenta_del_margen():
 
 
 def test_montos_desde_capital():
-    assert p2p.montos_p2p(dict(a.CONFIG_DEFAULT, capital_ars=160000, dolar_aprox=1600)) == {"ars": 80000, "usd": 50}
-    assert p2p.montos_p2p(dict(a.CONFIG_DEFAULT, capital_ars=None, p2p_monto={"ars": 5, "usd": 1})) == {"ars": 5, "usd": 1}
+    assert p2p.montos_p2p(dict(a.CONFIG_DEFAULT, capital_ars=160000, capital_usdt=0, dolar_aprox=1600)) == {"ars": 80000, "usd": 50}
+    assert p2p.montos_p2p(dict(a.CONFIG_DEFAULT, capital_usdt=1000, dolar_aprox=1600)) == {"ars": 800000, "usd": 500}
+    assert p2p.capital_en_pesos(dict(a.CONFIG_DEFAULT, capital_usdt=1000), precio_usdt=1650) == 1650000
+    assert p2p.montos_p2p(dict(a.CONFIG_DEFAULT, capital_ars=None, capital_usdt=0, p2p_monto={"ars": 5, "usd": 1})) == {"ars": 5, "usd": 1}
     assert p2p.montos_p2p(dict(a.CONFIG_DEFAULT), capital=100000)["ars"] == 50000
 
 
 def test_plan_capital():
-    cfg = _cfg(capital_ars=160000)
+    cfg = _cfg(capital_ars=160000, capital_usdt=0)
     an = p2p.analizar_fiat({"compra": [_of("compra", 1660.0, nombre="vende1", minimo=20000)],
                             "venta": [_of("venta", 1650.0)]}, "ars", 80000, cfg)
     txt = a.texto_plano(p2p.plan_capital(160000, an, cfg))
@@ -160,3 +162,34 @@ def test_monto_parseo():
     from comandos import _monto
     assert _monto("160000") == 160000 and _monto("160.000") == 160000 and _monto("$160k") == 160000
     assert _monto(None) is None and _monto("abc") is None
+
+
+def test_plan_capital_desde_usdt():
+    cfg = _cfg(capital_usdt=1078)
+    an = p2p.analizar_fiat({"compra": [_of("compra", 1668.0, nombre="vende1")],
+                            "venta": [_of("venta", 1657.0, nombre="compra1", minimo=100000, maximo=2000000)]}, "ars", 890000, cfg)
+    txt = a.texto_plano(p2p.plan_capital(1078 * 1657.0, an, cfg, usdt_total=1078))
+    assert "1,078 USDT" in txt and "Vendé 539 USDT" in txt and "compra1 te paga" in txt
+    assert "te entran $ 893,123" in txt and "539 USDT quedan en Binance" in txt
+    assert "anuncio de COMPRA" in txt and "límites $ 223,000 a $ 893,123" in txt
+    assert "comprá" not in txt.split("2. Publicá")[0]  # con USDT no hay compra inicial
+
+
+def test_monto_y_unidad_usdt():
+    from comandos import _monto, _unidad
+    assert _monto("1078usdt") == 1078 and _monto("1078") == 1078
+    assert _unidad(["/capital", "1078", "usdt"]) == "usdt" and _unidad(["/capital", "1078usdt"]) == "usdt"
+    assert _unidad(["/capital", "160000"]) == "ars"
+
+
+def test_plan_elige_contraparte_confiable():
+    cfg = _cfg(capital_usdt=1000, p2p_min_ops=50, p2p_min_tasa=0.95)
+    venta = [_of("venta", 1660.0, nombre="nuevito", ordenes=14, tasa=0.82),
+             _of("venta", 1655.0, nombre="veterano", ordenes=300, tasa=0.99)]
+    an = p2p.analizar_fiat({"compra": [_of("compra", 1668.0)], "venta": venta}, "ars", 800000, cfg)
+    txt = a.texto_plano(p2p.plan_capital(1000 * 1660, an, cfg, usdt_total=1000))
+    assert "veterano te paga $ 1,655.00" in txt and "Hay mejor precio (nuevito a $ 1,660.00)" in txt
+    # si nadie cumple, usa el mejor precio sin aviso
+    cfg2 = _cfg(capital_usdt=1000, p2p_min_ops=1000)
+    txt2 = a.texto_plano(p2p.plan_capital(1000 * 1660, an, cfg2, usdt_total=1000))
+    assert "nuevito te paga" in txt2 and "Hay mejor precio" not in txt2

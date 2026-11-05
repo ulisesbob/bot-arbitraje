@@ -45,7 +45,7 @@ Se crea solo la primera vez. Campos:
 | `p2p_binance_directo` | consultar Binance P2P directo en vez del precio de CriptoYa, filtrado por tus métodos de pago y un monto realista. CriptoYa muestra la mejor oferta de cualquiera, que en dólares suele pedir un banco de Panamá o Wise | `true` |
 | `p2p_metodos` | identificadores de Binance de tus métodos de pago (Mercado Pago, Ualá, transferencia bancaria, Santander, Brubank, Naranja X). Evitá los genéricos como `BBVABank`, que matchean vendedores de otros países | ver código |
 | `p2p_monto` | monto por fiat con el que se buscan ofertas (las ofertas tienen mínimo y máximo) | usd 500, ars 500000 |
-| `capital_ars` | tu capital total en pesos para P2P; la mitad opera en pesos y la mitad en USDT. Dimensiona las ofertas que mira /p2p y las alertas | 160000 |
+| `capital_ars` / `capital_usdt` | tu capital total para P2P, en pesos o en USDT (USDT manda); la mitad opera en pesos y la mitad en USDT. Dimensiona las ofertas que mira /p2p y las alertas | 0 / 1078 |
 | `dolar_aprox` | solo para dimensionar el lado en dólares | 1650 |
 | `p2p_comision_anuncio_pct` | comisión que Binance cobra al que publica un anuncio, por lado; se descuenta dos veces del margen por vuelta. Hoy 0% para USDT en pesos, revisalo en Binance | 0.0 |
 | `telegram_token` / `telegram_chat_id` | credenciales de Telegram | vacío |
@@ -78,7 +78,7 @@ Con Telegram configurado, el bot también responde mensajes (tipeá `/` y aparec
 | `/p2p` | arbitraje dentro de Binance P2P: las 3 mejores puntas de cada lado (con método de pago, límites y reputación), si hay cruce para comprar y vender ya, a qué precio publicar tus anuncios y cuánto deja, el dólar implícito, y qué hacer paso a paso |
 | `/dolar` | todas las formas de comprar dólares ordenadas de más barata a más cara (oficial, blue, MEP, CCL, cripto, tarjeta) y la stablecoin más barata por exchange |
 | `/btc` `/eth` `/usdt` `/usdc` `/dai` | los 3 exchanges más baratos para comprar y los 3 mejores para vender, en pesos y en dólares |
-| `/capital 160000` | plan para arrancar con esa plata: cuánto va a Mercado Pago, cuántos USDT comprar y a quién, y los dos anuncios con precio, cantidad y límites. `/p2p 160000` analiza con ese tamaño |
+| `/capital 160000` o `/capital 1078 usdt` | plan para arrancar con esa plata: reparto entre Mercado Pago y Binance, la primera operación (comprar USDT si tenés pesos, vender la mitad si tenés USDT) y los dos anuncios con precio, cantidad y límites. `/p2p 1078 usdt` analiza con ese tamaño |
 | `/umbral` | muestra el umbral de alerta; `/umbral 1.5` lo cambia y lo guarda en `config.json` |
 | `/ayuda` | la lista de comandos |
 

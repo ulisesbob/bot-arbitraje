@@ -20,7 +20,7 @@ COMANDOS = [
     ("usdc", "donde comprar y vender USDC mas barato"),
     ("dai", "donde comprar y vender DAI mas barato"),
     ("p2p", "arbitraje dentro de Binance P2P: puntas, cruce, anuncios sugeridos y que hacer"),
-    ("capital", "con cuanta plata arrancas: reparto, compra inicial y anuncios, ej: /capital 160000"),
+    ("capital", "con cuanta plata arrancas: reparto, primera operacion y anuncios, ej: /capital 1078 usdt"),
     ("umbral", "ver o cambiar el spread minimo de alerta, ej: /umbral 1.5"),
     ("ayuda", "esta lista"),
 ]
@@ -234,14 +234,19 @@ def resp_rulos(cfg: dict) -> str:
 
 
 def _monto(arg: str | None) -> float | None:
-    """'160000', '160.000', '160k', '$160000' -> 160000.0"""
+    """'160000', '160.000', '160k', '$160000', '1078usdt' -> numero (la unidad la mira _unidad)"""
     if not arg:
         return None
-    t = arg.lower().replace("$", "").replace(".", "").replace(",", "").strip()
+    t = arg.lower().replace("$", "").replace(".", "").replace(",", "").replace("usdt", "").replace("ars", "").strip()
     try:
         return float(t[:-1]) * 1000 if t.endswith("k") else float(t)
     except ValueError:
         return None
+
+
+def _unidad(partes: list[str]) -> str:
+    """'usdt' si el comando dice usdt en cualquier parte, si no 'ars'."""
+    return "usdt" if any("usdt" in p.lower() for p in partes[1:]) else "ars"
 
 
 def manejar(texto: str, cfg: dict, persistente: bool = True) -> str:
@@ -283,13 +288,21 @@ def manejar(texto: str, cfg: dict, persistente: bool = True) -> str:
             return resp_rulos(cfg)
         if cmd in ("p2p", "arbitrajep2p", "capital"):
             import p2p
-            capital = _monto(arg)
-            if cmd == "capital" and capital is None and not cfg.get("capital_ars"):
-                return "Decime con cu\u00e1nto arranc\u00e1s, en pesos: <code>/capital 160000</code>"
-            cfg_p2p = dict(cfg, capital_ars=capital) if capital else cfg
+            monto = _monto(arg)
+            unidad = _unidad(partes) if monto else ("usdt" if cfg.get("capital_usdt") else "ars")
+            usdt = monto if (monto and unidad == "usdt") else (None if monto else cfg.get("capital_usdt"))
+            pesos = monto if (monto and unidad == "ars") else (None if monto else cfg.get("capital_ars"))
+            if cmd == "capital" and not usdt and not pesos:
+                return ("Decime con cu\u00e1nto arranc\u00e1s: <code>/capital 160000</code> (pesos) "
+                        "o <code>/capital 1078 usdt</code>")
+            cfg_p2p = dict(cfg, capital_usdt=usdt or 0, capital_ars=pesos or 0)
             analisis = p2p.analizar_todo(cfg_p2p, p2p.descargar_libros(cfg_p2p))
             if cmd == "capital":
-                return p2p.plan_capital(capital or cfg["capital_ars"], analisis.get("ars"), cfg_p2p)
+                an = analisis.get("ars")
+                if usdt:
+                    valor = usdt * (an["bid"].precio if an else cfg.get("dolar_aprox", 1650))
+                    return p2p.plan_capital(valor, an, cfg_p2p, usdt_total=usdt)
+                return p2p.plan_capital(pesos, an, cfg_p2p)
             return p2p.formatear_informe(analisis.get("ars"), analisis.get("usd"), None, cfg_p2p)
         if cmd == "umbral":
             return resp_umbral(cfg, arg, persistente)

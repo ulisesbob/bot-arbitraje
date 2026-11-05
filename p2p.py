@@ -278,35 +278,74 @@ def formatear_informe(an_ars: dict | None, an_usd: dict | None, dolar: dict | No
     return "\n".join(out)
 
 
+def capital_en_pesos(cfg: dict, precio_usdt: float | None = None) -> float:
+    """Capital total en pesos: capital_usdt al precio dado (o dolar_aprox), o capital_ars."""
+    if cfg.get("capital_usdt"):
+        return cfg["capital_usdt"] * (precio_usdt or cfg.get("dolar_aprox", 1650))
+    return cfg.get("capital_ars") or 0
+
+
 def montos_p2p(cfg: dict, capital: float | None = None) -> dict[str, float]:
     """Monto por operacion para cada fiat. Con capital (o capital_ars en config) es la mitad del
     capital: una mitad opera en pesos, la otra en USDT. Si no hay capital, usa p2p_monto."""
-    cap = capital if capital is not None else cfg.get("capital_ars")
+    cap = capital if capital is not None else capital_en_pesos(cfg)
     if cap:
         lado = cap / 2
         return {"ars": lado, "usd": round(lado / cfg.get("dolar_aprox", 1650))}
     return dict(cfg.get("p2p_monto") or {})
 
 
-def plan_capital(capital: float, an: dict | None, cfg: dict) -> str:
-    """Como arrancar con `capital` pesos: reparto, compra inicial de USDT y los dos anuncios."""
+def confiable(ofertas: list[Oferta], cfg: dict) -> Oferta | None:
+    """Primera oferta (ya vienen ordenadas por precio) cuya contraparte tiene suficiente historial.
+    Para la primera operacion importa mas que salga limpia que arañar unos pesos."""
+    min_ops, min_tasa = cfg.get("p2p_min_ops", 50), cfg.get("p2p_min_tasa", 0.95)
+    for o in ofertas:
+        if o.ordenes_mes >= min_ops and o.tasa >= min_tasa:
+            return o
+    return ofertas[0] if ofertas else None
+
+
+def plan_capital(capital: float, an: dict | None, cfg: dict, usdt_total: float | None = None) -> str:
+    """Como arrancar: reparto, primera operacion y los dos anuncios.
+    capital: pesos totales. usdt_total: si tu capital esta en USDT (entonces `capital` es su valor en pesos)."""
     from arbitraje import SEP
-    lado = capital / 2
-    out = [f"\U0001f4bc <b>Plan para arrancar con $ {capital:,.0f}</b>", SEP]
+    titulo = f"{usdt_total:,.0f} USDT (~$ {capital:,.0f})" if usdt_total else f"$ {capital:,.0f}"
+    out = [f"\U0001f4bc <b>Plan para arrancar con {titulo}</b>", SEP]
     if not an:
         out.append("No pude leer las ofertas de Binance P2P ahora; probá de nuevo en un minuto.")
         return "\n".join(out)
-    ask = an["ask"]
-    usdt = lado / ask.precio
+    ask = confiable(an["compra"], cfg) or an["ask"]
+    bid = confiable(an["venta"], cfg) or an["bid"]
+    if usdt_total:
+        # Ya tenes el lado USDT: vendes la mitad por pesos para armar el lado Mercado Pago
+        usdt = usdt_total / 2
+        lado = usdt * bid.precio
+        out += [
+            f"<b>1. Repart\u00ed el capital</b>",
+            f"\u2022 Vend\u00e9 <b>{usdt:,.0f} USDT</b> por pesos en Binance P2P ahora: <b>{bid.nombre}</b> te paga "
+            f"$ {bid.precio:,.2f} por {bid.metodos_cortos} ({bid.ordenes_mes} ops, {bid.tasa * 100:.0f}%) "
+            f"\u2192 te entran <b>$ {lado:,.0f}</b> a Mercado Pago.",
+            f"\u2022 Los otros <b>{usdt:,.0f} USDT</b> quedan en Binance para el anuncio de venta.",
+        ]
+        if bid.minimo > lado or bid.maximo < lado:
+            out.append(f"  \u26a0\ufe0f Ese comprador opera entre $ {bid.minimo:,.0f} y $ {bid.maximo:,.0f}: "
+                       f"part\u00ed la venta en varias operaciones o eleg\u00ed otro de la lista de /p2p.")
+    else:
+        lado = capital / 2
+        usdt = lado / ask.precio
+        out += [
+            f"<b>1. Repart\u00ed el capital</b>",
+            f"\u2022 $ {lado:,.0f} quedan en Mercado Pago (o el banco que uses) para pagar compras.",
+            f"\u2022 $ {lado:,.0f} \u2192 compr\u00e1 <b>{usdt:,.0f} USDT</b> en Binance P2P ahora: "
+            f"<b>{ask.nombre}</b> a $ {ask.precio:,.2f} por {ask.metodos_cortos} ({ask.ordenes_mes} ops, {ask.tasa * 100:.0f}%).",
+        ]
+        if ask.minimo > lado:
+            out.append(f"  \u26a0\ufe0f Ese vendedor pide m\u00ednimo $ {ask.minimo:,.0f}: eleg\u00ed otro de la lista de /p2p con m\u00ednimo menor.")
+    elegido, mejor = (bid, an["bid"]) if usdt_total else (ask, an["ask"])
+    if elegido is not mejor:
+        out.append(f"  \u2139\ufe0f Hay mejor precio ({mejor.nombre} a $ {mejor.precio:,.2f}) pero con poco historial "
+                   f"({mejor.ordenes_mes} ops, {mejor.tasa * 100:.0f}%); para la primera operaci\u00f3n conviene el de arriba.")
     minimo = round(lado * 0.25, -3)  # limite minimo de TUS anuncios: un cuarto del lado
-    out += [
-        f"<b>1. Repart\u00ed el capital</b>",
-        f"\u2022 $ {lado:,.0f} quedan en Mercado Pago (o el banco que uses) para pagar compras.",
-        f"\u2022 $ {lado:,.0f} \u2192 compr\u00e1 <b>{usdt:,.0f} USDT</b> en Binance P2P ahora: "
-        f"<b>{ask.nombre}</b> a $ {ask.precio:,.2f} por {ask.metodos_cortos} ({ask.ordenes_mes} ops, {ask.tasa * 100:.0f}%).",
-    ]
-    if ask.minimo > lado:
-        out.append(f"  \u26a0\ufe0f Ese vendedor pide m\u00ednimo $ {ask.minimo:,.0f}: eleg\u00ed otro de la lista de /p2p con m\u00ednimo menor.")
     out += [
         "",
         f"<b>2. Public\u00e1 el anuncio de COMPRA</b>",
