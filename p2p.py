@@ -54,10 +54,14 @@ class Oferta:
 # ---------- descarga ----------
 
 def _buscar(asset: str, fiat: str, trade: str, metodos: list[str], monto: float | None,
-            pais: str = "AR", rows: int = 10) -> list[dict]:
+            pais: str | None = None, rows: int = 10) -> list[dict]:
+    # Sin filtro de pais: con countries=["AR"] Binance esconde justamente las mejores ofertas
+    # (verificado: el mejor vendedor pasaba de 1652.80 a 1655.00). CriptoYa tampoco lo usa.
+    # La relevancia la dan los metodos de pago argentinos (payTypes) y el monto (transAmount).
     body = {"asset": asset.upper(), "fiat": fiat.upper(), "merchantCheck": False, "page": 1,
-            "payTypes": metodos, "publisherType": None, "rows": rows, "tradeType": trade,
-            "countries": [pais]}
+            "payTypes": metodos, "publisherType": None, "rows": rows, "tradeType": trade}
+    if pais:
+        body["countries"] = [pais]
     if monto:
         body["transAmount"] = str(monto)
     req = urllib.request.Request(URL, data=json.dumps(body).encode(),

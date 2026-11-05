@@ -13,7 +13,7 @@ def _fake_urlopen(respuestas):
 
     def urlopen(req, timeout=0):
         b = json.loads(req.data)
-        assert b["countries"] == ["AR"] and b["payTypes"] == ["MercadoPagoNew", "UalaNew"]
+        assert "countries" not in b and b["payTypes"] == ["MercadoPagoNew", "UalaNew"]
         return Resp(respuestas.get((b["asset"], b["fiat"], b["tradeType"]), []))
     return urlopen
 
