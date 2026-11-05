@@ -33,7 +33,7 @@ Se crea solo la primera vez. Campos:
 | `intervalo_seg` | cada cuánto consulta | 60 |
 | `max_antiguedad_seg` | descarta cotizaciones más viejas que esto | 600 |
 | `cooldown_seg` | si una oportunidad se cierra y reabre dentro de este tiempo, no vuelve a avisar | 900 |
-| `excluir_por_fiat` | exclusiones solo para un fiat; por defecto saca los P2P de los pares en dólares (ahí se paga por bancos del exterior con comisiones altas) | `{"usd": ["*p2p", "p2pme"]}` |
+| `excluir_por_fiat` | exclusiones solo para un fiat, ej. `{"usd": ["*p2p"]}` para sacar los P2P de los pares en dólares | `{}` |
 | `excluir_exchanges` | exchanges a ignorar en alertas, rulos y comandos; `"*p2p"` excluiría todos los P2P. Por defecto los P2P entran, marcados con 👥 y una advertencia de verificar la cotización | `[]` |
 | `max_desvio_pct` | descarta precios alejados más de esto de la mediana (ofertas basura de P2P); `0` apaga el filtro | 5.0 |
 | `max_desvio_usd_pct` | lo mismo para los pares en dólares, más estricto: ahí conviven dólares locales y de cuentas en el exterior (Xapo, Astropay) que cotizan 4 a 6% más bajo sin ser arbitrables | 3.0 |

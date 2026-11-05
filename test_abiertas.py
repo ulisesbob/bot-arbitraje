@@ -3,11 +3,12 @@ import arbitraje as a
 
 
 def test_exclusion_por_fiat_solo_en_dolares():
-    cfg = dict(a.CONFIG_DEFAULT)
+    cfg = dict(a.CONFIG_DEFAULT, excluir_por_fiat={"usd": ["*p2p", "p2pme"]})
     assert a.esta_excluido("binancep2p", a.excluidos_para("usdt/usd", cfg))
     assert a.esta_excluido("p2pme", a.excluidos_para("usdc/usd", cfg))
     assert not a.esta_excluido("binancep2p", a.excluidos_para("usdt/ars", cfg))
     assert not a.esta_excluido("fiwind", a.excluidos_para("usdt/usd", cfg))
+    assert not a.esta_excluido("binancep2p", a.excluidos_para("usdt/usd", dict(a.CONFIG_DEFAULT)))  # default: entran
 
 
 def test_apertura_y_cierre_de_arbitraje_simple():

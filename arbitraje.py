@@ -35,8 +35,8 @@ CONFIG_DEFAULT = {
     "max_antiguedad_seg": 600,
     "cooldown_seg": 900,
     "excluir_exchanges": [],
-    # P2P solo en pares en dolares: ahi se paga por bancos y billeteras del exterior con comisiones altas
-    "excluir_por_fiat": {"usd": ["*p2p", "p2pme"]},
+    # exclusiones solo para un fiat, ej. {"usd": ["*p2p"]}; vacio: los P2P entran en todos los pares
+    "excluir_por_fiat": {},
     "max_desvio_pct": 5.0,
     "max_desvio_usd_pct": 3.0,
     "incluir_pasos": True,
