@@ -45,7 +45,11 @@ CONFIG_DEFAULT = {
     "p2p_binance_directo": True,
     "p2p_metodos": ["MercadoPagoNew", "UalaNew", "BankArgentina", "SantanderArgentina", "BancoBrubankNew",
                     "NaranjaX"],
-    "p2p_monto": {"usd": 500, "ars": 500000},
+    "p2p_monto": {"usd": 500, "ars": 500000},  # se ignora si hay capital_ars
+    # Tu capital total en pesos para P2P: la mitad va a Mercado Pago/banco y la mitad a USDT en Binance.
+    # /capital 160000 lo usa al instante; aca queda el default para /p2p y las alertas.
+    "capital_ars": 160000,
+    "dolar_aprox": 1650,              # solo para dimensionar el lado en dolares (capital/2 / dolar_aprox)
     "max_desvio_pct": 5.0,
     "max_desvio_usd_pct": 3.0,
     "incluir_pasos": True,

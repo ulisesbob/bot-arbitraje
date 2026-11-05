@@ -136,3 +136,27 @@ def test_comision_de_anuncio_descuenta_del_margen():
     assert abs(sin["margen_pct"] - sin["margen_bruto_pct"]) < 1e-9
     assert abs(con["margen_pct"] - (con["margen_bruto_pct"] - 0.7)) < 1e-9
     assert "descontada la comisi" in a.texto_plano(p2p.formatear_informe(con, None, None, _cfg(p2p_comision_anuncio_pct=0.35)))
+
+
+def test_montos_desde_capital():
+    assert p2p.montos_p2p(dict(a.CONFIG_DEFAULT, capital_ars=160000, dolar_aprox=1600)) == {"ars": 80000, "usd": 50}
+    assert p2p.montos_p2p(dict(a.CONFIG_DEFAULT, capital_ars=None, p2p_monto={"ars": 5, "usd": 1})) == {"ars": 5, "usd": 1}
+    assert p2p.montos_p2p(dict(a.CONFIG_DEFAULT), capital=100000)["ars"] == 50000
+
+
+def test_plan_capital():
+    cfg = _cfg(capital_ars=160000)
+    an = p2p.analizar_fiat({"compra": [_of("compra", 1660.0, nombre="vende1", minimo=20000)],
+                            "venta": [_of("venta", 1650.0)]}, "ars", 80000, cfg)
+    txt = a.texto_plano(p2p.plan_capital(160000, an, cfg))
+    assert "Plan para arrancar con $ 160,000" in txt and "$ 80,000 quedan en Mercado Pago" in txt
+    assert "48 USDT" in txt and "vende1 a $ 1,660.00" in txt
+    assert "anuncio de COMPRA" in txt and "anuncio de VENTA" in txt and "l\u00edmites $ 20,000 a $ 80,000" in txt
+    assert "Margen por vuelta hoy" in txt and "Reglas:" in txt
+    assert "No pude leer" in a.texto_plano(p2p.plan_capital(160000, None, cfg))
+
+
+def test_monto_parseo():
+    from comandos import _monto
+    assert _monto("160000") == 160000 and _monto("160.000") == 160000 and _monto("$160k") == 160000
+    assert _monto(None) is None and _monto("abc") is None

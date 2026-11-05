@@ -20,6 +20,7 @@ COMANDOS = [
     ("usdc", "donde comprar y vender USDC mas barato"),
     ("dai", "donde comprar y vender DAI mas barato"),
     ("p2p", "arbitraje dentro de Binance P2P: puntas, cruce, anuncios sugeridos y que hacer"),
+    ("capital", "con cuanta plata arrancas: reparto, compra inicial y anuncios, ej: /capital 160000"),
     ("umbral", "ver o cambiar el spread minimo de alerta, ej: /umbral 1.5"),
     ("ayuda", "esta lista"),
 ]
@@ -39,7 +40,7 @@ def _semaforo(spread: float, umbral: float) -> str:
 
 def resp_ayuda() -> str:
     grupos = [
-        ("\U0001f4ca Mercado", ["arbitraje", "rulos", "p2p", "dolar"]),
+        ("\U0001f4ca Mercado", ["arbitraje", "rulos", "p2p", "capital", "dolar"]),
         ("\U0001fa99 Por moneda", ["btc", "eth", "usdt", "usdc", "dai"]),
         ("⚙️ Configuración", ["umbral", "ayuda"]),
     ]
@@ -232,6 +233,17 @@ def resp_rulos(cfg: dict) -> str:
     return rulos.formatear_listado(rulos.buscar_rulos(aristas, cfg.get("max_patas", 4)), cfg["umbral_rulo_pct"])
 
 
+def _monto(arg: str | None) -> float | None:
+    """'160000', '160.000', '160k', '$160000' -> 160000.0"""
+    if not arg:
+        return None
+    t = arg.lower().replace("$", "").replace(".", "").replace(",", "").strip()
+    try:
+        return float(t[:-1]) * 1000 if t.endswith("k") else float(t)
+    except ValueError:
+        return None
+
+
 def manejar(texto: str, cfg: dict, persistente: bool = True) -> str:
     """persistente=False en el webhook (Vercel), donde no se puede escribir config.json."""
     partes = texto.strip().split()
@@ -269,14 +281,16 @@ def manejar(texto: str, cfg: dict, persistente: bool = True) -> str:
             return resp_arbitraje(res, cfg["umbral_pct"])
         if cmd == "rulos":
             return resp_rulos(cfg)
-        if cmd in ("p2p", "arbitrajep2p"):
+        if cmd in ("p2p", "arbitrajep2p", "capital"):
             import p2p
-            analisis = p2p.analizar_todo(cfg, p2p.descargar_libros(cfg))
-            try:
-                dolar = obtener_dolar()
-            except Exception:  # noqa: BLE001
-                dolar = None
-            return p2p.formatear_informe(analisis.get("ars"), analisis.get("usd"), dolar, cfg)
+            capital = _monto(arg)
+            if cmd == "capital" and capital is None and not cfg.get("capital_ars"):
+                return "Decime con cu\u00e1nto arranc\u00e1s, en pesos: <code>/capital 160000</code>"
+            cfg_p2p = dict(cfg, capital_ars=capital) if capital else cfg
+            analisis = p2p.analizar_todo(cfg_p2p, p2p.descargar_libros(cfg_p2p))
+            if cmd == "capital":
+                return p2p.plan_capital(capital or cfg["capital_ars"], analisis.get("ars"), cfg_p2p)
+            return p2p.formatear_informe(analisis.get("ars"), analisis.get("usd"), None, cfg_p2p)
         if cmd == "umbral":
             return resp_umbral(cfg, arg, persistente)
     except Exception as e:  # noqa: BLE001

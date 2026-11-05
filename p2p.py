@@ -29,7 +29,7 @@ URL = "https://p2p.binance.com/bapi/c2c/v2/friendly/c2c/adv/search"
 ACTIVOS = {"usdt", "usdc", "btc", "eth", "bnb"}
 
 METODOS_CORTOS = {
-    "MercadoPagoNew": "MP", "UalaNew": "Ualá", "BankArgentina": "Banco", "SantanderArgentina": "Santander",
+    "MercadoPagoNew": "MP", "UalaNew": "Ualá", "UalaNewest": "Ualá", "BankArgentina": "Banco", "SantanderArgentina": "Santander",
     "BancoBrubankNew": "Brubank", "NaranjaX": "NaranjaX", "Beloapp": "Belo", "personalpay": "PersonalPay",
     "BBVABank": "BBVA", "BankTransferArgentina": "Transf", "Lemoncash": "Lemon",
 }
@@ -116,7 +116,7 @@ def aplicar(cotizaciones: dict[str, dict | None], cfg: dict) -> dict[str, str]:
     if not cfg.get("p2p_binance_directo"):
         return {}
     metodos = cfg.get("p2p_metodos") or []
-    montos = cfg.get("p2p_monto") or {}
+    montos = montos_p2p(cfg)
     resultado = {}
     for par, cot in cotizaciones.items():
         if not cot or "binancep2p" not in cot:
@@ -263,7 +263,7 @@ TITULO_FIAT = {"ars": "\U0001f1e6\U0001f1f7 PESOS", "usd": "\U0001f1fa\U0001f1f8
 
 def formatear_informe(an_ars: dict | None, an_usd: dict | None, dolar: dict | None, cfg: dict) -> str:
     from arbitraje import SEP
-    montos = cfg.get("p2p_monto") or {}
+    montos = montos_p2p(cfg)
     out = [f"\U0001f465 <b>Binance P2P — USDT</b>  <i>tus métodos · "
            f"{_monto(montos.get('ars', 0), 'ars')} / {_monto(montos.get('usd', 0), 'usd')}</i>"]
     for an in (an_ars, an_usd):
@@ -275,6 +275,54 @@ def formatear_informe(an_ars: dict | None, an_usd: dict | None, dolar: dict | No
     if not an_ars and not an_usd:
         out.append("No pude leer las ofertas de Binance P2P ahora.")
     out += [SEP, REGLAS]
+    return "\n".join(out)
+
+
+def montos_p2p(cfg: dict, capital: float | None = None) -> dict[str, float]:
+    """Monto por operacion para cada fiat. Con capital (o capital_ars en config) es la mitad del
+    capital: una mitad opera en pesos, la otra en USDT. Si no hay capital, usa p2p_monto."""
+    cap = capital if capital is not None else cfg.get("capital_ars")
+    if cap:
+        lado = cap / 2
+        return {"ars": lado, "usd": round(lado / cfg.get("dolar_aprox", 1650))}
+    return dict(cfg.get("p2p_monto") or {})
+
+
+def plan_capital(capital: float, an: dict | None, cfg: dict) -> str:
+    """Como arrancar con `capital` pesos: reparto, compra inicial de USDT y los dos anuncios."""
+    from arbitraje import SEP
+    lado = capital / 2
+    out = [f"\U0001f4bc <b>Plan para arrancar con $ {capital:,.0f}</b>", SEP]
+    if not an:
+        out.append("No pude leer las ofertas de Binance P2P ahora; probá de nuevo en un minuto.")
+        return "\n".join(out)
+    ask = an["ask"]
+    usdt = lado / ask.precio
+    minimo = round(lado * 0.25, -3)  # limite minimo de TUS anuncios: un cuarto del lado
+    out += [
+        f"<b>1. Repart\u00ed el capital</b>",
+        f"\u2022 $ {lado:,.0f} quedan en Mercado Pago (o el banco que uses) para pagar compras.",
+        f"\u2022 $ {lado:,.0f} \u2192 compr\u00e1 <b>{usdt:,.0f} USDT</b> en Binance P2P ahora: "
+        f"<b>{ask.nombre}</b> a $ {ask.precio:,.2f} por {ask.metodos_cortos} ({ask.ordenes_mes} ops, {ask.tasa * 100:.0f}%).",
+    ]
+    if ask.minimo > lado:
+        out.append(f"  \u26a0\ufe0f Ese vendedor pide m\u00ednimo $ {ask.minimo:,.0f}: eleg\u00ed otro de la lista de /p2p con m\u00ednimo menor.")
+    out += [
+        "",
+        f"<b>2. Public\u00e1 el anuncio de COMPRA</b>",
+        f"\u2022 Precio fijo <b>$ {an['anuncio_compra']:,.2f}</b> \u00b7 cantidad {usdt:,.0f} USDT \u00b7 l\u00edmites $ {minimo:,.0f} a $ {lado:,.0f}",
+        f"\u2022 Pago: Mercado Pago / los m\u00e9todos que tengas \u00b7 plazo 15 min",
+        "",
+        f"<b>3. Public\u00e1 el anuncio de VENTA</b>",
+        f"\u2022 Precio fijo <b>$ {an['anuncio_venta']:,.2f}</b> \u00b7 cantidad {usdt:,.0f} USDT \u00b7 mismos l\u00edmites",
+        "",
+        f"<b>4. Qu\u00e9 esperar</b>",
+        f"\u2022 Margen por vuelta hoy: <b>{an['margen_pct']:+.2f}%</b> \u2192 ~$ {lado * an['margen_pct'] / 100:,.0f} por cada vuelta completa.",
+        "\u2022 Una vuelta = alguien te vende USDT por tu anuncio de compra y despu\u00e9s alguien te compra por el de venta.",
+        "\u2022 Si una vuelta deja todo el capital de un lado, paus\u00e1 el anuncio que qued\u00f3 sin respaldo.",
+        SEP,
+        REGLAS,
+    ]
     return "\n".join(out)
 
 
@@ -331,7 +379,7 @@ def formatear_cierres(cerradas: list[dict]) -> str:
 def descargar_libros(cfg: dict) -> dict[str, dict | None]:
     """Libros de USDT contra cada fiat configurado, en paralelo. None donde fallo."""
     from concurrent.futures import ThreadPoolExecutor
-    metodos, montos = cfg.get("p2p_metodos") or [], cfg.get("p2p_monto") or {}
+    metodos, montos = cfg.get("p2p_metodos") or [], montos_p2p(cfg)
     fiats = cfg.get("p2p_fiats") or ["ars", "usd"]
 
     def uno(fiat):
@@ -345,7 +393,7 @@ def descargar_libros(cfg: dict) -> dict[str, dict | None]:
 
 
 def analizar_todo(cfg: dict, libros: dict[str, dict | None]) -> dict[str, dict | None]:
-    montos = cfg.get("p2p_monto") or {}
+    montos = montos_p2p(cfg)
     return {fiat: (analizar_fiat(lib, fiat, montos.get(fiat, 0), cfg) if lib else None) for fiat, lib in libros.items()}
 
 
