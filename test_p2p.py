@@ -53,3 +53,77 @@ def test_descargar_varios_aplica_p2p_cuando_esta_activo(monkeypatch):
     monkeypatch.setattr(p2p.urllib.request, "urlopen", _fake_urlopen({("USDT", "USD", "BUY"): [1.065], ("USDT", "USD", "SELL"): [1.052]}))
     assert a.descargar_varios(["usdt/usd"], 1000, cfg)["usdt/usd"]["binancep2p"]["totalAsk"] == 1.065
     assert a.descargar_varios(["usdt/usd"], 1000)["usdt/usd"]["binancep2p"]["totalAsk"] == 1.04  # sin cfg: CriptoYa
+
+
+def _of(lado, precio, metodos=("MercadoPagoNew",), minimo=100_000, maximo=600_000, nombre="x", ordenes=100, tasa=0.98):
+    return p2p.Oferta(lado, precio, list(metodos), minimo, maximo, nombre, ordenes, tasa)
+
+
+def _cfg(**k):
+    return dict(a.CONFIG_DEFAULT, telegram_token="t", telegram_chat_id="c", **k)
+
+
+def test_analisis_cruce_y_anuncios():
+    lib = {"compra": [_of("compra", 1655.0, nombre="vende1"), _of("compra", 1658.0)],
+           "venta": [_of("venta", 1662.0, ("BankArgentina",), nombre="compra1"), _of("venta", 1650.0)]}
+    an = p2p.analizar_fiat(lib, "ars", 500_000, _cfg())
+    assert abs(an["cruce_pct"] - (1662 - 1655) / 1655 * 100) < 1e-9 and an["cruce_viable"]
+    assert an["cruce_operable"] == 600_000 and an["cruce_minimo"] == 100_000
+    # anuncios: compra un tick arriba del mejor comprador, venta un tick abajo del mejor vendedor
+    tick = 1655.0 * 0.05 / 100
+    assert abs(an["anuncio_compra"] - (1662.0 + tick)) < 1e-9 and abs(an["anuncio_venta"] - (1655.0 - tick)) < 1e-9
+    assert an["margen_pct"] < 0  # puntas cruzadas: anunciar no deja margen
+    # sin cruce y con margen para anuncios
+    lib2 = {"compra": [_of("compra", 1670.0)], "venta": [_of("venta", 1640.0)]}
+    an2 = p2p.analizar_fiat(lib2, "ars", 500_000, _cfg())
+    assert not an2["cruce_viable"] and an2["margen_pct"] > 1.5
+    assert p2p.analizar_fiat({"compra": [], "venta": [_of("venta", 1)]}, "ars", 1, _cfg()) is None
+
+
+def test_dolar_implicito():
+    ars = p2p.analizar_fiat({"compra": [_of("compra", 1660.0)], "venta": [_of("venta", 1655.0)]}, "ars", 500_000, _cfg())
+    usd = p2p.analizar_fiat({"compra": [_of("compra", 1.065)], "venta": [_of("venta", 1.054)]}, "usd", 500, _cfg())
+    imp = p2p.dolar_implicito(ars, usd)
+    assert abs(imp["comprar_usd"] - 1660.0 / 1.054) < 1e-9 and abs(imp["vender_usd"] - 1655.0 / 1.065) < 1e-9
+
+
+def test_informe_elige_que_hacer_y_marca_p2p():
+    cfg = _cfg()
+    ars = p2p.analizar_fiat({"compra": [_of("compra", 1655.0, nombre="vende1")], "venta": [_of("venta", 1662.0, nombre="compra1")]}, "ars", 500_000, cfg)
+    usd = p2p.analizar_fiat({"compra": [_of("compra", 1.070)], "venta": [_of("venta", 1.050)]}, "usd", 500, cfg)
+    txt = a.texto_plano(p2p.formatear_informe(ars, usd, {"oficial": {"ask": 1570}}, cfg))
+    assert "Comprás a (vendedores)" in txt and "vende1" in txt and "100k–600k" in txt and "100✔ 98%" in txt
+    assert "Qué hacer ahora" in txt and "Comprá" in txt and "vendeselo a compra1" in txt  # el cruce manda
+    assert "Dólar implícito" in txt and "oficial $ 1,570" in txt and "P2P" in txt
+    # sin cruce pero con margen: sugiere anuncios
+    usd2 = p2p.analizar_fiat({"compra": [_of("compra", 1.070)], "venta": [_of("venta", 1.050)]}, "usd", 500, cfg)
+    txt2 = a.texto_plano(p2p.formatear_informe(None, usd2, None, cfg))
+    assert "Publicá un anuncio de compra" in txt2 and "por vuelta" in txt2
+
+
+def test_alertas_p2p_abren_y_cierran():
+    cfg = _cfg()
+    cruzado = p2p.analizar_fiat({"compra": [_of("compra", 1655.0)], "venta": [_of("venta", 1662.0)]}, "ars", 500_000, cfg)
+    actuales = p2p.detectar({"ars": cruzado, "usd": None}, cfg)
+    assert list(actuales) == ["cruce|ars"] and actuales["cruce|ars"]["pct"] > 0.3
+    nuevas, cerradas, estado = p2p.actualizar({}, actuales, ahora=1000)
+    assert nuevas == ["cruce|ars"] and cerradas == [] and estado["cruce|ars"]["max"] == actuales["cruce|ars"]["pct"]
+    txt = a.texto_plano(p2p.formatear_alerta("cruce|ars", cruzado))
+    assert "CRUCE P2P en pesos" in txt and "1️⃣ Comprá" in txt and "sin transferencias" in txt
+    nuevas, cerradas, estado = p2p.actualizar(estado, {}, ahora=1600)
+    assert nuevas == [] and estado == {} and cerradas[0]["tipo"] == "cruce" and abs(cerradas[0]["duracion_min"] - 10) < 1e-9
+    assert "SE CERRÓ EN P2P" in a.texto_plano(p2p.formatear_cierres(cerradas))
+
+
+def test_procesar_p2p_manda_alerta_una_vez(monkeypatch):
+    cfg = _cfg()
+    enviados = []
+    monkeypatch.setattr(a, "enviar_telegram", lambda t, c, m: enviados.append(m) or True)
+    lib = {"ars": {"compra": [_of("compra", 1655.0)], "venta": [_of("venta", 1662.0)]}, "usd": None}
+    monkeypatch.setattr(p2p, "descargar_libros", lambda cfg: lib)
+    _, _, estado = p2p.procesar(cfg, {}, ahora=1000)
+    _, _, estado = p2p.procesar(cfg, estado, ahora=1060)
+    assert len(enviados) == 1 and "CRUCE P2P" in enviados[0]
+    lib["ars"]["venta"][0] = _of("venta", 1640.0)
+    _, _, estado = p2p.procesar(cfg, estado, ahora=1200)
+    assert len(enviados) == 2 and "SE CERR" in enviados[1] and estado == {}

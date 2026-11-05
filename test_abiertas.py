@@ -36,7 +36,7 @@ def test_pasada_avisa_una_vez_al_abrir_y_una_al_cerrar(monkeypatch):
     enviados = []
     monkeypatch.setattr(a, "enviar_telegram", lambda t, c, m: enviados.append(m) or True)
     cfg = dict(a.CONFIG_DEFAULT, pares=["usdt/ars"], excluir_exchanges=[], telegram_token="t",
-               telegram_chat_id="c", max_desvio_pct=0, rulos=False)
+               telegram_chat_id="c", max_desvio_pct=0, rulos=False, p2p_alertas=False, p2p_binance_directo=False)
     abiertas = {}
     cd = a.Cooldown(1, estado={})
     for _ in range(30):                                            # 30 pasadas con la oportunidad abierta

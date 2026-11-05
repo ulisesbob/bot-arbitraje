@@ -25,7 +25,7 @@ def test_escanear_devuelve_estado_nuevo(monkeypatch):
     monkeypatch.setattr(a, "enviar_telegram", lambda t, c, m: enviados.append(m) or True)
     monkeypatch.setattr(a, "cargar_config", lambda escribir=True: dict(
         a.CONFIG_DEFAULT, pares=["usdt/ars"], excluir_exchanges=[], telegram_token="t", telegram_chat_id="c",
-        max_desvio_pct=0))
+        max_desvio_pct=0, p2p_alertas=False, p2p_binance_directo=False))
     r1 = s.escanear({})
     assert r1["alertas"] == 1 and len(enviados) == 1  # exA -> exB = +3.1%
     assert list(r1["estado"]["cooldown"]) == ["usdt/ars|exA|exB"]

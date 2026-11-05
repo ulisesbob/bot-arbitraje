@@ -71,6 +71,7 @@ Con Telegram configurado, el bot también responde mensajes (tipeá `/` y aparec
 |---|---|
 | `/arbitraje` | mejor spread de cada par ahora, marcando los que superan el umbral |
 | `/rulos` | los 5 mejores rulos de 3 o 4 patas ahora, superen o no el umbral |
+| `/p2p` | arbitraje dentro de Binance P2P: las 3 mejores puntas de cada lado (con método de pago, límites y reputación), si hay cruce para comprar y vender ya, a qué precio publicar tus anuncios y cuánto deja, el dólar implícito, y qué hacer paso a paso |
 | `/dolar` | todas las formas de comprar dólares ordenadas de más barata a más cara (oficial, blue, MEP, CCL, cripto, tarjeta) y la stablecoin más barata por exchange |
 | `/btc` `/eth` `/usdt` `/usdc` `/dai` | los 3 exchanges más baratos para comprar y los 3 mejores para vender, en pesos y en dólares |
 | `/umbral` | muestra el umbral de alerta; `/umbral 1.5` lo cambia y lo guarda en `config.json` |
@@ -109,6 +110,21 @@ umbral avisa que se cerró, a cuánto llegó y cuánto duró. El estado vive en 
 Advertencia: estos rulos muestran precios publicados, no ejecuciones garantizadas. Los P2P
 dependen de encontrar contraparte, mover dólares entre un exchange y un banco o broker tiene
 costos y demoras, y la compra de dólar oficial tiene reglas y límites propios.
+
+## Arbitraje dentro de Binance P2P
+
+Es el arbitraje más limpio: comprás USDT a una persona y se lo vendés a otra, todo dentro de
+Binance, sin transferir nada ni pagar comisión de red. El bot consulta las ofertas que aceptan
+tus métodos de pago (`p2p_metodos`) y tu monto (`p2p_monto`) y analiza dos cosas:
+
+- **Cruce**: la mejor oferta de compra paga más que lo que pide la mejor de venta. Comprás y
+  vendés ya. Alerta si supera `umbral_p2p_cruce_pct` (0,3%).
+- **Anuncios**: a qué precio publicar tu propio anuncio de compra y de venta para quedar primero
+  en cada punta, y cuánto deja cada vuelta. Alerta si supera `umbral_p2p_anuncio_pct` (1%).
+
+Las alertas avisan una vez al abrir y una al cerrar. En P2P el riesgo es la contraparte: liberá
+el USDT solo con la plata acreditada, y preferí vendedores con muchas órdenes y 100% completadas
+(se muestran al lado de cada oferta).
 
 ## Qué significa la alerta
 

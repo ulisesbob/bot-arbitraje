@@ -52,6 +52,12 @@ CONFIG_DEFAULT = {
     "umbral_rulo_pct": 2.0,
     "volumen_rulo": 100000,
     "max_patas": 4,
+    # Arbitraje dentro de Binance P2P (comprar a una persona, vender a otra): alertas y comando /p2p
+    "p2p_alertas": True,
+    "p2p_fiats": ["ars", "usd"],
+    "umbral_p2p_cruce_pct": 0.3,     # cruce comprar->vender ya (sin costos en el medio, con poco alcanza)
+    "umbral_p2p_anuncio_pct": 1.0,   # margen entre puntas para publicar tus anuncios
+    "p2p_tick_pct": 0.05,            # cuanto mejorar la punta para quedar primero
     "telegram_token": "",
     "telegram_chat_id": "",
 }
@@ -455,7 +461,8 @@ def texto_plano(html: str) -> str:
 
 
 def pasada(cfg: dict, cooldown: Cooldown, mostrar_resumen: bool = True,
-           rulos_abiertos: dict | None = None, abiertas: dict | None = None) -> list[Oportunidad]:
+           rulos_abiertos: dict | None = None, abiertas: dict | None = None,
+           p2p_abiertas: dict | None = None) -> list[Oportunidad]:
     """Una pasada completa: arbitraje simple + rulos.
     El arbitraje simple avisa una vez cuando una oportunidad se abre y una vez cuando se cierra.
     rulos_abiertos / abiertas: estado en memoria (se modifican en el lugar); si son None se
@@ -520,6 +527,20 @@ def pasada(cfg: dict, cooldown: Cooldown, mostrar_resumen: bool = True,
             _, _, nuevo = rulos.procesar(cfg, cotizaciones, dolar, rulos_abiertos, ahora)
             rulos_abiertos.clear()
             rulos_abiertos.update(nuevo)
+    if cfg.get("p2p_alertas") and cfg.get("p2p_binance_directo"):
+        import p2p
+        archivo_p2p = None
+        if p2p_abiertas is None:
+            archivo_p2p = Path(__file__).with_name("p2p.json")
+            p2p_abiertas = _leer_json(archivo_p2p)
+        try:
+            _, _, nuevo = p2p.procesar(cfg, p2p_abiertas, ahora)
+            p2p_abiertas.clear()
+            p2p_abiertas.update(nuevo)
+        except Exception as e:  # noqa: BLE001
+            print(f"[p2p] error en el analisis P2P: {e}")
+        if archivo_p2p:
+            _escribir_json(archivo_p2p, p2p_abiertas)
     return alertadas
 
 

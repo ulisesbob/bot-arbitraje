@@ -19,6 +19,7 @@ COMANDOS = [
     ("usdt", "donde comprar y vender USDT mas barato"),
     ("usdc", "donde comprar y vender USDC mas barato"),
     ("dai", "donde comprar y vender DAI mas barato"),
+    ("p2p", "arbitraje dentro de Binance P2P: puntas, cruce, anuncios sugeridos y que hacer"),
     ("umbral", "ver o cambiar el spread minimo de alerta, ej: /umbral 1.5"),
     ("ayuda", "esta lista"),
 ]
@@ -38,7 +39,7 @@ def _semaforo(spread: float, umbral: float) -> str:
 
 def resp_ayuda() -> str:
     grupos = [
-        ("\U0001f4ca Mercado", ["arbitraje", "rulos", "dolar"]),
+        ("\U0001f4ca Mercado", ["arbitraje", "rulos", "p2p", "dolar"]),
         ("\U0001fa99 Por moneda", ["btc", "eth", "usdt", "usdc", "dai"]),
         ("⚙️ Configuración", ["umbral", "ayuda"]),
     ]
@@ -266,6 +267,14 @@ def manejar(texto: str, cfg: dict, persistente: bool = True) -> str:
             return resp_arbitraje(res, cfg["umbral_pct"])
         if cmd == "rulos":
             return resp_rulos(cfg)
+        if cmd in ("p2p", "arbitrajep2p"):
+            import p2p
+            analisis = p2p.analizar_todo(cfg, p2p.descargar_libros(cfg))
+            try:
+                dolar = obtener_dolar()
+            except Exception:  # noqa: BLE001
+                dolar = None
+            return p2p.formatear_informe(analisis.get("ars"), analisis.get("usd"), dolar, cfg)
         if cmd == "umbral":
             return resp_umbral(cfg, arg, persistente)
     except Exception as e:  # noqa: BLE001

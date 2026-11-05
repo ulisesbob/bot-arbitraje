@@ -14,3 +14,4 @@ rulos.json
 .wrangler/
 node_modules/
 abiertas.json
+p2p.json

@@ -30,6 +30,7 @@ jobs:
             config.json
             rulos.json
             abiertas.json
+            p2p.json
           key: estado-${{ github.run_id }}
           restore-keys: estado-
 
@@ -49,4 +50,5 @@ jobs:
             config.json
             rulos.json
             abiertas.json
+            p2p.json
           key: estado-${{ github.run_id }}

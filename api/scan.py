@@ -29,15 +29,17 @@ def escanear(estado: dict) -> dict:
     cooldown_estado = dict(estado.get("cooldown") or {})
     rulos_abiertos = dict(estado.get("rulos") or {})
     abiertas = dict(estado.get("abiertas") or {})
+    p2p_abiertas = dict(estado.get("p2p") or {})
     cooldown = a.Cooldown(cfg["cooldown_seg"], estado=cooldown_estado)
     salida = io.StringIO()
     with redirect_stdout(salida):
-        alertadas = a.pasada(cfg, cooldown, mostrar_resumen=True, rulos_abiertos=rulos_abiertos, abiertas=abiertas)
+        alertadas = a.pasada(cfg, cooldown, mostrar_resumen=True, rulos_abiertos=rulos_abiertos,
+                             abiertas=abiertas, p2p_abiertas=p2p_abiertas)
     log = salida.getvalue()
     print(log, end="")
-    mejor = [l for l in log.splitlines() if "mejor spread" in l or "[rulos] mejor" in l]
+    mejor = [l for l in log.splitlines() if "mejor spread" in l or "[rulos] mejor" in l or "[p2p] usdt" in l]
     return {
-        "estado": {"cooldown": cooldown.estado, "rulos": rulos_abiertos, "abiertas": abiertas},
+        "estado": {"cooldown": cooldown.estado, "rulos": rulos_abiertos, "abiertas": abiertas, "p2p": p2p_abiertas},
         "alertas": len(alertadas),
         "abiertas": len(abiertas),
         "rulos_abiertos": len(rulos_abiertos),
