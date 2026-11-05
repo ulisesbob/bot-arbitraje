@@ -34,7 +34,7 @@ Se crea solo la primera vez. Campos:
 | `max_antiguedad_seg` | descarta cotizaciones más viejas que esto | 600 |
 | `cooldown_seg` | si una oportunidad se cierra y reabre dentro de este tiempo, no vuelve a avisar | 900 |
 | `excluir_por_fiat` | exclusiones solo para un fiat, ej. `{"usd": ["*p2p"]}` para sacar los P2P de los pares en dólares | `{}` |
-| `excluir_exchanges` | exchanges a ignorar en alertas, rulos y comandos; `"*p2p"` excluiría todos los P2P. Por defecto los P2P entran, marcados con 👥 y una advertencia de verificar la cotización | `[]` |
+| `excluir_exchanges` | exchanges a ignorar en alertas, rulos y comandos; `"*p2p"` excluiría todos los P2P. Por defecto solo se excluye Airtm, porque el precio que publica CriptoYa no es el que termina cobrando (verificado: $1.635 publicado contra $1.710 real) | `["airtm"]` |
 | `max_desvio_pct` | descarta precios alejados más de esto de la mediana, juzgando cada lado por separado: un exchange que vende barato pero paga poco sigue valiendo para comprar (ofertas basura de P2P quedan afuera); `0` apaga el filtro | 5.0 |
 | `max_desvio_usd_pct` | lo mismo para los pares en dólares, más estricto: ahí conviven dólares locales y de cuentas en el exterior (Xapo, Astropay) que cotizan 4 a 6% más bajo sin ser arbitrables | 3.0 |
 | `rulos` | buscar rulos de 3 o 4 patas (pesos → dólar/stablecoin → … → pesos) | `true` |

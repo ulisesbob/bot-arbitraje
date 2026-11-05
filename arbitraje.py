@@ -34,7 +34,8 @@ CONFIG_DEFAULT = {
     "intervalo_seg": 60,
     "max_antiguedad_seg": 600,
     "cooldown_seg": 900,
-    "excluir_exchanges": [],
+    # airtm: CriptoYa muestra un precio que no es el que termina cobrando (verificado: $1.635 vs $1.710 real)
+    "excluir_exchanges": ["airtm"],
     # exclusiones solo para un fiat, ej. {"usd": ["*p2p"]}; vacio: los P2P entran en todos los pares
     "excluir_por_fiat": {},
     # Binance P2P consultado directo, con los metodos de pago que tenes y un monto realista.
