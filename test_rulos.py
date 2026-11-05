@@ -98,3 +98,17 @@ def test_correr_manda_alertas_y_guarda_estado(tmp_path, monkeypatch):
     # sin dolar barato ya no hay rulo -> se cierra
     r.correr(cfg, COTS, {"oficial": {"ask": 1700, "bid": 1500}}, estado, ahora=2200)
     assert len(enviados) == 2 and "SE CERR" in enviados[1]
+
+
+def test_mep_con_castigo_del_broker():
+    cfg = dict(CFG, mep_spread_pct=1.0)
+    ar = r.construir_aristas({}, DOLAR, cfg, NOW)
+    compra = [x for x in ar if x.exchange == "broker" and x.destino == "USD"][0]
+    venta = [x for x in ar if x.exchange == "broker" and x.origen == "USD"][0]
+    assert abs(compra.precio - 1580 * 1.01) < 1e-9 and abs(venta.precio - 1580 * 0.99) < 1e-9
+    assert abs(compra.tasa - 1 / (1580 * 1.01)) < 1e-12 and abs(venta.tasa - 1580 * 0.99) < 1e-9
+    assert "ref. $ 1,580" in venta.accion and "1.0%" in venta.accion
+    # sin castigo: referencia pura y sin nota
+    ar0 = r.construir_aristas({}, DOLAR, dict(CFG, mep_spread_pct=0), NOW)
+    v0 = [x for x in ar0 if x.exchange == "broker" and x.origen == "USD"][0]
+    assert v0.precio == 1580 and "ref." not in v0.accion

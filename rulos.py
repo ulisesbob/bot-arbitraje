@@ -95,10 +95,17 @@ def construir_aristas(cotizaciones: dict[str, dict | None], dolar: dict | None, 
                                   "Vendés dólares oficial"))
         mep = ((dolar.get("mep") or {}).get("al30") or {}).get("24hs") or {}
         if mep.get("price"):
-            aristas.append(Arista("ARS", "USD", 1 / mep["price"], "broker", mep["price"], "$",
-                                  "Comprás dólar MEP"))
-            aristas.append(Arista("USD", "ARS", mep["price"], "broker", mep["price"], "$",
-                                  "Vendés dólar MEP"))
+            # El MEP de CriptoYa es la referencia del mercado (punto medio del AL30). El broker te lo
+            # opera peor en las dos direcciones: mep_spread_pct es ese castigo, ajustalo con lo que
+            # te muestre tu broker al comprar y al vender.
+            s = cfg.get("mep_spread_pct", 0.0) / 100
+            ref = mep["price"]
+            compra, venta = ref * (1 + s), ref * (1 - s)
+            nota = f" (ref. $ {ref:,.0f} ±{s * 100:.1f}%)" if s else ""
+            aristas.append(Arista("ARS", "USD", 1 / compra, "broker", compra, "$",
+                                  "Comprás dólar MEP" + nota))
+            aristas.append(Arista("USD", "ARS", venta, "broker", venta, "$",
+                                  "Vendés dólar MEP" + nota))
     return aristas
 
 

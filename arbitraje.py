@@ -53,6 +53,7 @@ CONFIG_DEFAULT = {
     "umbral_rulo_pct": 2.0,
     "volumen_rulo": 100000,
     "max_patas": 4,
+    "mep_spread_pct": 1.0,           # castigo del broker sobre el MEP de referencia, por lado (Cocos hoy ~1.3% al vender)
     # Arbitraje dentro de Binance P2P (comprar a una persona, vender a otra): alertas y comando /p2p
     "p2p_alertas": True,
     "p2p_fiats": ["ars", "usd"],
