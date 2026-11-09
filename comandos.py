@@ -11,6 +11,7 @@ import time
 import arbitraje as a
 
 COMANDOS = [
+    ("mejor", "ranking de TODAS las oportunidades (cualquier moneda), neto y pasos del primero"),
     ("arbitraje", "mejores spreads entre exchanges ahora"),
     ("rulos", "mejores rulos de 3 o 4 patas (pesos > dolar/stable > pesos)"),
     ("dolar", "la forma mas barata de comprar dolares"),
@@ -40,7 +41,7 @@ def _semaforo(spread: float, umbral: float) -> str:
 
 def resp_ayuda() -> str:
     grupos = [
-        ("\U0001f4ca Mercado", ["arbitraje", "rulos", "p2p", "capital", "dolar"]),
+        ("\U0001f4ca Mercado", ["mejor", "arbitraje", "rulos", "p2p", "capital", "dolar"]),
         ("\U0001fa99 Por moneda", ["btc", "eth", "usdt", "usdc", "dai"]),
         ("⚙️ Configuración", ["umbral", "ayuda"]),
     ]
@@ -230,7 +231,7 @@ def resp_rulos(cfg: dict) -> str:
     except Exception:  # noqa: BLE001
         dolar = None
     aristas = rulos.construir_aristas(cotizaciones, dolar, cfg)
-    return rulos.formatear_listado(rulos.buscar_rulos(aristas, cfg.get("max_patas", 4), cfg=cfg),
+    return rulos.formatear_listado(rulos.buscar_todos(aristas, cfg),
                                    cfg["umbral_rulo_pct"], monto=cfg["volumen_rulo"], cfg=cfg)
 
 
@@ -302,6 +303,9 @@ def manejar(texto: str, cfg: dict, persistente: bool = True) -> str:
             return resp_arbitraje(res, cfg["umbral_pct"])
         if cmd == "rulos":
             return resp_rulos(cfg)
+        if cmd in ("mejor", "top", "oportunidades"):
+            import oportunidades
+            return oportunidades.informe(cfg)
         if cmd in ("p2p", "arbitrajep2p", "capital"):
             import p2p
             numeros = [x for x in (_monto(t) for t in partes[1:]) if x is not None]

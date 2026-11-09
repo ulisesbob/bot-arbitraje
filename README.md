@@ -41,6 +41,7 @@ Se crea solo la primera vez. Campos:
 | `umbral_rulo_pct` | rendimiento mínimo de un rulo para alertar | 2.0 |
 | `volumen_rulo` | monto en pesos sobre el que se calcula la ganancia del rulo | 100000 |
 | `max_patas` | largo máximo del rulo | 4 |
+| `rulos_inicios` | monedas en que pueden empezar y terminar los rulos | ARS, USD, USDT |
 | `costo_movimiento_pct` | rulos: costo estimado de mover la plata entre dos plataformas, por movimiento; el neto del rulo lo descuenta | 0.15 |
 | `mep_spread_pct` | castigo del broker sobre el MEP de referencia de CriptoYa, por lado: al vender dólares vía MEP el rulo usa la referencia menos esto, al comprar la referencia más esto. Ajustalo con lo que te muestre tu broker | 1.0 |
 | `p2p_binance_directo` | consultar Binance P2P directo en vez del precio de CriptoYa, filtrado por tus métodos de pago y un monto realista. CriptoYa muestra la mejor oferta de cualquiera, que en dólares suele pedir un banco de Panamá o Wise | `true` |
@@ -77,6 +78,7 @@ Con Telegram configurado, el bot también responde mensajes (tipeá `/` y aparec
 
 | Comando | Qué responde |
 |---|---|
+| `/mejor` | ranking único de todas las oportunidades (arbitraje simple, rulos desde pesos, dólares o USDT, cruce y anuncios en Binance P2P, cruce entre plataformas) ordenadas por neto, con veredicto y los pasos de la primera |
 | `/arbitraje` | mejor spread de cada par ahora, marcando los que superan el umbral |
 | `/rulos` | veredicto arriba y los 3 mejores rulos con neto (descontadas las transferencias), pasos completos con las transferencias entre medio, y notas (MEP a 24 h, pata bancaria, P2P) |
 | `/p2p` | resumen arriba con lo mejor del momento; por fiat: qué hacer (cruce, anuncios con precios exactos, o nada), mercado con la mejor punta de cada lado y su reputación, y el cruce entre plataformas (Binance, Bybit, OKX, Bitget) con el neto. `/p2p 1642.83 1655.07` además te dice en qué puesto están tus anuncios de compra y venta |

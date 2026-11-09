@@ -23,6 +23,7 @@ import arbitraje as a
 
 STABLES = ("usdt", "usdc", "dai")
 INTERMEDIOS = ("USD", "USDT", "USDC", "DAI")
+NODOS = ("ARS", "USD", "USDT", "USDC", "DAI")
 BANCARIOS = ("banco", "broker")
 
 
@@ -47,6 +48,10 @@ class Rulo:
     rendimiento_pct: float          # bruto
     neto_pct: float = 0.0           # bruto menos el costo de mover la plata entre plataformas
     movimientos: int = 0            # cuantas veces hay que transferir entre una pata y la siguiente
+
+    @property
+    def inicio(self) -> str:
+        return self.patas[0].origen
 
     @property
     def clave(self) -> str:
@@ -125,15 +130,18 @@ def movimientos(patas: list[Arista]) -> int:
     return sum(1 for i in range(1, len(patas)) if patas[i].exchange != patas[i - 1].exchange)
 
 
-def buscar_rulos(aristas: list[Arista], max_patas: int = 4, min_patas: int = 3, cfg: dict | None = None) -> list[Rulo]:
-    """Todas las secuencias ARS -> (intermedios distintos) -> ARS, con la mejor arista por
-    pata, ordenadas por rendimiento NETO. Las de 2 patas son el arbitraje simple y se excluyen."""
+def buscar_rulos(aristas: list[Arista], max_patas: int = 4, min_patas: int = 3, cfg: dict | None = None,
+                 inicio: str = "ARS") -> list[Rulo]:
+    """Todas las secuencias inicio -> (intermedios distintos) -> inicio, con la mejor arista por
+    pata, ordenadas por rendimiento NETO. inicio: ARS, USD o USDT (en que moneda empezas y terminas).
+    Las de 2 patas son el arbitraje simple y se excluyen."""
     costo = (cfg or {}).get("costo_movimiento_pct", 0.15)
     mejores = mejores_por_tramo(aristas)
+    intermedios = [n for n in NODOS if n != inicio]
     rulos = []
     for n in range(min_patas - 1, max_patas):  # cantidad de intermedios
-        for medio in permutations(INTERMEDIOS, n):
-            secuencia = ["ARS", *medio, "ARS"]
+        for medio in permutations(intermedios, n):
+            secuencia = [inicio, *medio, inicio]
             patas = []
             for o, d in zip(secuencia, secuencia[1:]):
                 ar = mejores.get((o, d))
@@ -149,6 +157,25 @@ def buscar_rulos(aristas: list[Arista], max_patas: int = 4, min_patas: int = 3, 
                 rulos.append(Rulo(patas, bruto, bruto - mov * costo, mov))
     rulos.sort(key=lambda r: -r.neto_pct)
     return rulos
+
+
+def buscar_todos(aristas: list[Arista], cfg: dict) -> list[Rulo]:
+    """Rulos desde cada moneda de inicio configurada (rulos_inicios), juntos y ordenados por neto.
+    Un mismo ciclo rotado (ARS→USD→USDT→ARS y USDT→ARS→USD→USDT) es la misma oportunidad: se
+    cuenta una vez, prefiriendo que empiece en la moneda en que tenes el capital."""
+    preferido = "USDT" if cfg.get("capital_usdt") else "ARS"
+    inicios = cfg.get("rulos_inicios", ["ARS"])
+    orden = [preferido] + [i for i in inicios if i != preferido]
+    vistos: dict[frozenset, Rulo] = {}
+    for inicio in orden:
+        if inicio not in inicios:
+            continue
+        for r in buscar_rulos(aristas, cfg.get("max_patas", 4), cfg=cfg, inicio=inicio):
+            firma = frozenset((p.origen, p.destino, p.exchange) for p in r.patas)
+            vistos.setdefault(firma, r)
+    todos = list(vistos.values())
+    todos.sort(key=lambda r: -r.neto_pct)
+    return todos
 
 
 # ---------- estado: aperturas y cierres ----------
@@ -232,6 +259,14 @@ def notas_rulo(r: Rulo, cfg: dict | None = None) -> list[str]:
     return notas
 
 
+def monto_inicio(r: Rulo, monto_pesos: float, cfg: dict | None = None) -> tuple[float, str]:
+    """El monto de referencia expresado en la moneda en que empieza el rulo."""
+    if r.inicio == "ARS":
+        return monto_pesos, "$"
+    dolar = (cfg or {}).get("dolar_aprox", 1650)
+    return round(monto_pesos / dolar, -1) or 100, ("US$" if r.inicio == "USD" else r.inicio)
+
+
 def _sem(neto: float, umbral: float) -> str:
     return "\U0001f7e2" if neto >= umbral else ("\U0001f7e1" if neto > 0 else "\U0001f534")
 
@@ -240,7 +275,8 @@ def formatear_rulo(r: Rulo, monto: float = 100_000, cfg: dict | None = None) -> 
     umbral = (cfg or {}).get("umbral_rulo_pct", 2.0)
     out = [f"{_sem(r.neto_pct, umbral)} <b>{r.ruta}</b>   neto <b>{r.neto_pct:+.2f}%</b> <i>(bruto {r.rendimiento_pct:+.2f}%)</i>"]
     out += pasos_rulo(r)
-    out.append(f"\U0001f4b0 Por cada $ {monto:,.0f}: <b>~$ {monto * r.neto_pct / 100:,.0f}</b> netos")
+    m, sim = monto_inicio(r, monto, cfg)
+    out.append(f"\U0001f4b0 Por cada {sim} {m:,.0f}: <b>~{sim} {m * r.neto_pct / 100:,.0f}</b> netos")
     notas = notas_rulo(r, cfg)
     if notas:
         out.append("<i>" + " \u00b7 ".join(notas) + "</i>")
@@ -291,7 +327,7 @@ def procesar(cfg: dict, cotizaciones: dict[str, dict | None], dolar: dict | None
     Devuelve (nuevos, cerrados, estado_nuevo). No toca el disco."""
     ahora = ahora or time.time()
     aristas = construir_aristas(cotizaciones, dolar, cfg, ahora)
-    rulos = buscar_rulos(aristas, cfg.get("max_patas", 4), cfg=cfg)
+    rulos = buscar_todos(aristas, cfg)
     if rulos:
         m = rulos[0]
         print(f"[rulos] mejor: {m.ruta} {m.neto_pct:+.2f}% neto (bruto {m.rendimiento_pct:+.2f}%)")

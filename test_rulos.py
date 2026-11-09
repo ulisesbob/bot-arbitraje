@@ -114,3 +114,32 @@ def test_mep_con_castigo_del_broker():
     ar0 = r.construir_aristas({}, DOLAR, dict(CFG, mep_spread_pct=0), NOW)
     v0 = [x for x in ar0 if x.exchange == "broker" and x.origen == "USD"][0]
     assert v0.precio == 1580 and "ref." not in v0.accion
+
+
+def test_rulos_desde_usdt_y_usd():
+    cfg = dict(CFG, rulos_inicios=["ARS", "USD", "USDT"])
+    ar = r.construir_aristas(COTS, DOLAR, cfg, NOW)
+    desde_usdt = r.buscar_rulos(ar, cfg=cfg, inicio="USDT")
+    assert desde_usdt and all(x.inicio == "USDT" and x.patas[-1].destino == "USDT" for x in desde_usdt)
+    assert all(len({p.destino for p in x.patas[:-1]}) == len(x.patas) - 1 for x in desde_usdt)
+    todos = r.buscar_todos(ar, cfg)
+    assert {x.inicio for x in todos} == {"ARS", "USD", "USDT"}
+    assert [x.neto_pct for x in todos] == sorted((x.neto_pct for x in todos), reverse=True)
+    # el monto de referencia se expresa en la moneda de inicio
+    u = next(x for x in todos if x.inicio == "USDT")
+    assert r.monto_inicio(u, 100_000, dict(cfg, dolar_aprox=1600)) == (60, "USDT")
+    assert r.monto_inicio(todos[0] if todos[0].inicio == "ARS" else next(x for x in todos if x.inicio == "ARS"), 100_000, cfg) == (100_000, "$")
+    assert "USDT" in a.texto_plano(r.formatear_rulo(u, 100_000, cfg))
+
+
+def test_buscar_todos_no_repite_el_mismo_ciclo_rotado():
+    cfg = dict(CFG, rulos_inicios=["ARS", "USD", "USDT"], capital_usdt=1000)
+    todos = r.buscar_todos(r.construir_aristas(COTS, DOLAR, cfg, NOW), cfg)
+    firmas = [frozenset((p.origen, p.destino, p.exchange) for p in x.patas) for x in todos]
+    assert len(firmas) == len(set(firmas))
+    # el ciclo banco -> exA -> exB existe una sola vez y, como el capital esta en USDT, empieza en USDT
+    ciclo = [x for x in todos if {p.exchange for p in x.patas} == {"banco", "exA", "exB"}]
+    assert len(ciclo) == 1 and ciclo[0].inicio == "USDT"
+    # con capital en pesos, el mismo ciclo empieza en ARS
+    todos_ars = r.buscar_todos(r.construir_aristas(COTS, DOLAR, cfg, NOW), dict(cfg, capital_usdt=0))
+    assert [x for x in todos_ars if {p.exchange for p in x.patas} == {"banco", "exA", "exB"}][0].inicio == "ARS"
