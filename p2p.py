@@ -115,14 +115,26 @@ def cotizacion(asset: str, fiat: str, metodos: list[str], monto: float | None) -
     return {"ask": ask, "totalAsk": ask, "bid": bid, "totalBid": bid, "time": int(time.time())}
 
 
-def aplicar(cotizaciones: dict[str, dict | None], cfg: dict) -> dict[str, str]:
-    """Reemplaza la entrada 'binancep2p' de cada par por la cotizacion directa filtrada.
-    Si la consulta falla, deja la de CriptoYa. Devuelve {par: "directo" | "criptoya" | "sin"}."""
+def _directa(par: str, plat: str, cfg: dict) -> dict | None:
+    """Cotizacion directa de una plataforma para un par, con el formato de CriptoYa. None si no hay ofertas."""
+    asset, fiat = par.lower().split("/")
+    metodos, montos = cfg.get("p2p_metodos") or [], montos_p2p(cfg)
+    if plat == "binancep2p":
+        return cotizacion(asset, fiat, metodos, montos.get(fiat))
+    lib = libro_plataforma(plat, asset, fiat, metodos, montos.get(fiat), rows=3)
+    if lib.get("compra") and lib.get("venta"):
+        ask, bid = lib["compra"][0].precio, lib["venta"][0].precio
+        return {"ask": ask, "totalAsk": ask, "bid": bid, "totalBid": bid, "time": int(time.time())}
+    return None
+
+
+def aplicar(cotizaciones: dict[str, dict | None], cfg: dict, hilos: int = 8) -> dict[str, str]:
+    """Reemplaza las entradas de las plataformas P2P por su cotizacion directa filtrada por tus
+    metodos y monto, consultando todas en paralelo. Si una consulta falla, deja la de CriptoYa.
+    Devuelve {"par:plataforma": "directo" | "criptoya" | "sin"}."""
     if not cfg.get("p2p_binance_directo"):
         return {}
-    metodos = cfg.get("p2p_metodos") or []
-    montos = montos_p2p(cfg)
-    resultado = {}
+    tareas = []
     for par, cot in cotizaciones.items():
         if not cot:
             continue
@@ -134,25 +146,32 @@ def aplicar(cotizaciones: dict[str, dict | None], cfg: dict) -> dict[str, str]:
                 continue
             if plat != "binancep2p" and asset != "usdt":
                 continue  # en las otras plataformas solo consulto USDT
-            try:
-                if plat == "binancep2p":
-                    directa = cotizacion(asset, fiat, metodos, montos.get(fiat))
-                else:
-                    lib = libro_plataforma(plat, asset, fiat, metodos, montos.get(fiat), rows=3)
-                    directa = None
-                    if lib.get("compra") and lib.get("venta"):
-                        ask, bid = lib["compra"][0].precio, lib["venta"][0].precio
-                        directa = {"ask": ask, "totalAsk": ask, "bid": bid, "totalBid": bid, "time": int(time.time())}
-            except Exception as e:  # noqa: BLE001
-                print(f"[p2p] {par} {plat}: error, uso CriptoYa: {e}")
-                resultado[f"{par}:{plat}"] = "criptoya"
-                continue
-            if directa is None:
-                del cot[plat]  # sin ofertas para tus metodos/monto: no mostrar un precio que no podes operar
-                resultado[f"{par}:{plat}"] = "sin"
-            else:
-                cot[plat] = directa
-                resultado[f"{par}:{plat}"] = "directo"
+            tareas.append((par, plat))
+    if not tareas:
+        return {}
+
+    def una(t):
+        par, plat = t
+        try:
+            return t, _directa(par, plat, cfg), None
+        except Exception as e:  # noqa: BLE001
+            return t, None, e
+
+    from concurrent.futures import ThreadPoolExecutor
+    with ThreadPoolExecutor(max_workers=min(hilos, len(tareas))) as ex:
+        hechas = list(ex.map(una, tareas))
+    resultado = {}
+    for (par, plat), directa, error in hechas:
+        cot = cotizaciones[par]
+        if error is not None:
+            print(f"[p2p] {par} {plat}: error, uso CriptoYa: {error}")
+            resultado[f"{par}:{plat}"] = "criptoya"
+        elif directa is None:
+            cot.pop(plat, None)  # sin ofertas para tus metodos/monto: no mostrar un precio que no podes operar
+            resultado[f"{par}:{plat}"] = "sin"
+        else:
+            cot[plat] = directa
+            resultado[f"{par}:{plat}"] = "directo"
     return resultado
 
 
@@ -598,7 +617,7 @@ def descargar_libros_plataformas(cfg: dict) -> dict[str, dict[str, dict | None]]
             print(f"[p2p] {p} usdt/{f}: {e}")
             return fp, None
     out: dict[str, dict] = {f: {} for f in fiats}
-    with ThreadPoolExecutor(max_workers=min(6, len(tareas))) as ex:
+    with ThreadPoolExecutor(max_workers=min(8, len(tareas))) as ex:
         for (f, p), lib in ex.map(una, tareas):
             out[f][p] = lib
     return out

@@ -310,14 +310,10 @@ def descargar_varios(pares: list[str], volumen: float, cfg: dict | None = None) 
 
 
 def aplicar_p2p_paralelo(cotizaciones: dict, cfg: dict, p2p) -> None:
-    """p2p.aplicar() par por par, con las consultas a Binance en paralelo."""
-    from concurrent.futures import ThreadPoolExecutor
-    pares = [p for p, c in cotizaciones.items() if c and any(k in c for k in p2p.PLATAFORMAS)]
-    if not pares:
-        return
-    with ThreadPoolExecutor(max_workers=min(4, len(pares))) as ex:
-        resultados = list(ex.map(lambda par: p2p.aplicar({par: cotizaciones[par]}, cfg), pares))
-    print("[p2p] directo: " + ", ".join(f"{k}={v}" for r in resultados for k, v in r.items()))
+    """Cotizaciones directas de las plataformas P2P (todas las consultas en paralelo)."""
+    resultado = p2p.aplicar(cotizaciones, cfg)
+    if resultado:
+        print("[p2p] directo: " + ", ".join(f"{k}={v}" for k, v in resultado.items()))
 
 
 def enviar_telegram(token: str, chat_id: str, texto: str) -> bool:
