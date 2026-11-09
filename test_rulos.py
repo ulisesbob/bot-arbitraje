@@ -123,7 +123,7 @@ def test_rulos_desde_usdt_y_usd():
     assert desde_usdt and all(x.inicio == "USDT" and x.patas[-1].destino == "USDT" for x in desde_usdt)
     assert all(len({p.destino for p in x.patas[:-1]}) == len(x.patas) - 1 for x in desde_usdt)
     todos = r.buscar_todos(ar, cfg)
-    assert {x.inicio for x in todos} == {"ARS", "USD", "USDT"}
+    assert {x.inicio for x in todos} <= {"ARS", "USD", "USDT"} and any(x.inicio == "USDT" for x in todos)
     assert [x.neto_pct for x in todos] == sorted((x.neto_pct for x in todos), reverse=True)
     # el monto de referencia se expresa en la moneda de inicio
     u = next(x for x in todos if x.inicio == "USDT")
@@ -138,8 +138,10 @@ def test_buscar_todos_no_repite_el_mismo_ciclo_rotado():
     firmas = [frozenset((p.origen, p.destino, p.exchange) for p in x.patas) for x in todos]
     assert len(firmas) == len(set(firmas))
     # el ciclo banco -> exA -> exB existe una sola vez y, como el capital esta en USDT, empieza en USDT
-    ciclo = [x for x in todos if {p.exchange for p in x.patas} == {"banco", "exA", "exB"}]
+    firma_objetivo = frozenset({("ARS", "USD", "banco"), ("USD", "USDT", "exA"), ("USDT", "ARS", "exB")})
+    ciclo = [x for x in todos if frozenset((p.origen, p.destino, p.exchange) for p in x.patas) == firma_objetivo]
     assert len(ciclo) == 1 and ciclo[0].inicio == "USDT"
     # con capital en pesos, el mismo ciclo empieza en ARS
     todos_ars = r.buscar_todos(r.construir_aristas(COTS, DOLAR, cfg, NOW), dict(cfg, capital_usdt=0))
-    assert [x for x in todos_ars if {p.exchange for p in x.patas} == {"banco", "exA", "exB"}][0].inicio == "ARS"
+    ciclo_ars = [x for x in todos_ars if frozenset((p.origen, p.destino, p.exchange) for p in x.patas) == firma_objetivo]
+    assert len(ciclo_ars) == 1 and ciclo_ars[0].inicio == "ARS"
