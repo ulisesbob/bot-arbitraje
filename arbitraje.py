@@ -34,8 +34,11 @@ CONFIG_DEFAULT = {
     "intervalo_seg": 60,
     "max_antiguedad_seg": 600,
     "cooldown_seg": 900,
-    # airtm: CriptoYa muestra un precio que no es el que termina cobrando (verificado: $1.635 vs $1.710 real)
-    "excluir_exchanges": ["airtm"],
+    # airtm: CriptoYa muestra un precio que no es el que termina cobrando (verificado: $1.635 vs $1.710 real).
+    # P2P que no se consultan directo: CriptoYa publica la mejor oferta de cualquier metodo y no se puede
+    # verificar (mexcp2p "pagaba" $1.800 y $1.725). Quedan los cuatro que si se consultan con tus metodos.
+    "excluir_exchanges": ["airtm", "mexcp2p", "weexp2p", "eldoradop2p", "huobip2p", "bingxp2p", "kucoinp2p",
+                          "lemoncashp2p", "p2pme"],
     # exclusiones solo para un fiat, ej. {"usd": ["*p2p"]}; vacio: los P2P entran en todos los pares
     "excluir_por_fiat": {},
     # Binance P2P consultado directo, con los metodos de pago que tenes y un monto realista.
@@ -60,6 +63,7 @@ CONFIG_DEFAULT = {
     "umbral_rulo_pct": 2.0,
     "volumen_rulo": 100000,
     "max_patas": 4,
+    "costo_movimiento_pct": 0.15,    # rulos: costo de mover la plata entre dos plataformas (red + tiempo)
     "mep_spread_pct": 1.0,           # castigo del broker sobre el MEP de referencia, por lado (Cocos hoy ~1.3% al vender)
     # Arbitraje dentro de Binance P2P (comprar a una persona, vender a otra): alertas y comando /p2p
     "p2p_alertas": True,
@@ -308,12 +312,12 @@ def descargar_varios(pares: list[str], volumen: float, cfg: dict | None = None) 
 def aplicar_p2p_paralelo(cotizaciones: dict, cfg: dict, p2p) -> None:
     """p2p.aplicar() par por par, con las consultas a Binance en paralelo."""
     from concurrent.futures import ThreadPoolExecutor
-    pares = [p for p, c in cotizaciones.items() if c and "binancep2p" in c and p.split("/")[0] in p2p.ACTIVOS]
+    pares = [p for p, c in cotizaciones.items() if c and any(k in c for k in p2p.PLATAFORMAS)]
     if not pares:
         return
     with ThreadPoolExecutor(max_workers=min(4, len(pares))) as ex:
-        resultados = list(ex.map(lambda par: p2p.aplicar({par: cotizaciones[par]}, cfg).get(par), pares))
-    print("[p2p] binance directo: " + ", ".join(f"{p}={r}" for p, r in zip(pares, resultados)))
+        resultados = list(ex.map(lambda par: p2p.aplicar({par: cotizaciones[par]}, cfg), pares))
+    print("[p2p] directo: " + ", ".join(f"{k}={v}" for r in resultados for k, v in r.items()))
 
 
 def enviar_telegram(token: str, chat_id: str, texto: str) -> bool:

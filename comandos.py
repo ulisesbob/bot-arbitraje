@@ -230,16 +230,32 @@ def resp_rulos(cfg: dict) -> str:
     except Exception:  # noqa: BLE001
         dolar = None
     aristas = rulos.construir_aristas(cotizaciones, dolar, cfg)
-    return rulos.formatear_listado(rulos.buscar_rulos(aristas, cfg.get("max_patas", 4)), cfg["umbral_rulo_pct"])
+    return rulos.formatear_listado(rulos.buscar_rulos(aristas, cfg.get("max_patas", 4), cfg=cfg),
+                                   cfg["umbral_rulo_pct"], monto=cfg["volumen_rulo"], cfg=cfg)
 
 
 def _monto(arg: str | None) -> float | None:
     """'160000', '160.000', '160k', '$160000', '1078usdt' -> numero (la unidad la mira _unidad)"""
     if not arg:
         return None
-    t = arg.lower().replace("$", "").replace(".", "").replace(",", "").replace("usdt", "").replace("ars", "").strip()
+    t = arg.lower().replace("$", "").replace("usdt", "").replace("ars", "").strip()
+    mult = 1000 if t.endswith("k") else 1
+    t = t[:-1] if t.endswith("k") else t
+    # separadores: "1.655,07" -> coma decimal; "1655.07" -> punto decimal; "160.000" -> punto de miles
+    if "," in t and "." in t:
+        t = t.replace(".", "").replace(",", ".") if t.rfind(",") > t.rfind(".") else t.replace(",", "")
+    elif t.count(",") > 1:
+        t = t.replace(",", "")
+    elif t.count(".") > 1:
+        t = t.replace(".", "")
+    elif "," in t:
+        ent, _, dec = t.rpartition(",")
+        t = f"{ent}.{dec}" if len(dec) in (1, 2) else ent + dec
+    elif "." in t:
+        ent, _, dec = t.rpartition(".")
+        t = t if len(dec) in (1, 2) else ent + dec
     try:
-        return float(t[:-1]) * 1000 if t.endswith("k") else float(t)
+        return float(t) * mult
     except ValueError:
         return None
 
@@ -288,6 +304,11 @@ def manejar(texto: str, cfg: dict, persistente: bool = True) -> str:
             return resp_rulos(cfg)
         if cmd in ("p2p", "arbitrajep2p", "capital"):
             import p2p
+            numeros = [x for x in (_monto(t) for t in partes[1:]) if x is not None]
+            mis_anuncios = None
+            if cmd != "capital" and len(numeros) == 2 and _unidad(partes) == "ars":
+                mis_anuncios = (min(numeros), max(numeros))  # (precio de tu COMPRA, precio de tu VENTA)
+                arg = None
             monto = _monto(arg)
             unidad = _unidad(partes) if monto else ("usdt" if cfg.get("capital_usdt") else "ars")
             usdt = monto if (monto and unidad == "usdt") else (None if monto else cfg.get("capital_usdt"))
@@ -305,7 +326,8 @@ def manejar(texto: str, cfg: dict, persistente: bool = True) -> str:
                     valor = usdt * (an["bid"].precio if an else cfg.get("dolar_aprox", 1650))
                     return p2p.plan_capital(valor, an, cfg_p2p, usdt_total=usdt)
                 return p2p.plan_capital(pesos, an, cfg_p2p)
-            return p2p.formatear_informe(analisis.get("ars"), analisis.get("usd"), None, cfg_p2p, cruces)
+            return p2p.formatear_informe(analisis.get("ars"), analisis.get("usd"), None, cfg_p2p, cruces,
+                                         mis_anuncios=mis_anuncios, libro_ars=libros.get("ars", {}).get("binancep2p"))
         if cmd == "umbral":
             return resp_umbral(cfg, arg, persistente)
     except Exception as e:  # noqa: BLE001

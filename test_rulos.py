@@ -51,13 +51,13 @@ def test_detecta_nuevos_persistentes_y_cerrados():
     rulos = r.buscar_rulos(r.construir_aristas(COTS, DOLAR, CFG, NOW))
     nuevos, cerrados, estado = r.detectar_cambios({}, rulos, umbral=2.0, ahora=1000)
     assert [x.clave for x in nuevos] == [rulos[0].clave] and cerrados == []
-    assert estado[rulos[0].clave]["max"] == rulos[0].rendimiento_pct
+    assert estado[rulos[0].clave]["max"] == rulos[0].neto_pct
     # segunda corrida: sigue abierto con mas rendimiento -> ni nuevo ni cerrado, sube el maximo
-    rulos[0].rendimiento_pct += 1
+    rulos[0].neto_pct += 1
     nuevos2, cerrados2, estado2 = r.detectar_cambios(estado, rulos, umbral=2.0, ahora=1600)
-    assert nuevos2 == [] and cerrados2 == [] and estado2[rulos[0].clave]["max"] == rulos[0].rendimiento_pct
+    assert nuevos2 == [] and cerrados2 == [] and estado2[rulos[0].clave]["max"] == rulos[0].neto_pct
     # tercera: cae bajo el umbral -> cerrado con el maximo alcanzado y la duracion
-    rulos[0].rendimiento_pct = 0.5
+    rulos[0].neto_pct = 0.5
     nuevos3, cerrados3, estado3 = r.detectar_cambios(estado2, rulos, umbral=2.0, ahora=2200)
     assert nuevos3 == [] and estado3 == {}
     assert len(cerrados3) == 1 and cerrados3[0]["max"] == estado2[rulos[0].clave]["max"]
@@ -67,13 +67,15 @@ def test_detecta_nuevos_persistentes_y_cerrados():
 def test_formato_marca_p2p_y_transferencias():
     cots = {"usdt/ars": {"bybitp2p": q(1670, 1662)}, "usdt/usd": {"binancep2p": q(1.043, 1.030)}}
     cfg = dict(CFG, excluir_por_fiat={})  # este test quiere ver un P2P en la pata en dolares
-    rulo = r.buscar_rulos(r.construir_aristas(cots, DOLAR, cfg, NOW))[0]
-    txt = a.texto_plano(r.formatear_rulo(rulo, 100_000))
-    assert "RULO ARS → USD → USDT → ARS" in txt
-    assert "Comprás dólar oficial en banco a $ 1,547.00" in txt
+    rulo = r.buscar_rulos(r.construir_aristas(cots, DOLAR, cfg, NOW), cfg=cfg)[0]
+    txt = a.texto_plano(r.formatear_rulo(rulo, 100_000, cfg))
+    assert "ARS → USD → USDT → ARS" in txt and "neto" in txt and "bruto" in txt
+    assert "1. Comprás dólar oficial en el banco a $ 1,547.00" in txt
+    assert "mandás los dólares del banco a binancep2p" in txt and "TRC20" in txt
     assert "binancep2p \U0001f465" in txt and "P2P: precio de una persona" in txt
-    assert "confirmá red en común" in txt and "pata bancaria" in txt
-    assert f"~$ {100_000 * rulo.rendimiento_pct / 100:,.0f}" in txt
+    assert "2 transferencias" in txt and "pata del banco" in txt
+    assert rulo.movimientos == 2 and abs(rulo.neto_pct - (rulo.rendimiento_pct - 0.30)) < 1e-9
+    assert f"~$ {100_000 * rulo.neto_pct / 100:,.0f} netos" in txt
 
 
 def test_formato_cierre_y_listado():

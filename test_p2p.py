@@ -258,3 +258,26 @@ def test_cruce_entre_plataformas_y_alerta():
     assert "plataformas|ars" in actuales
     # sin dos plataformas distintas no hay cruce
     assert p2p.cruce_plataformas({"binancep2p": libros["binancep2p"]}, "ars", cfg) is None
+
+
+def test_monto_decimales_y_miles():
+    from comandos import _monto
+    assert _monto("1642.83") == 1642.83 and _monto("1.655,07") == 1655.07 and _monto("1655,07") == 1655.07
+    assert _monto("160.000") == 160000 and _monto("1.778.700") == 1778700 and _monto("160k") == 160000
+
+
+def test_posicion_de_mis_anuncios():
+    lib = {"compra": [_of("compra", 1652.79), _of("compra", 1655.9)], "venta": [_of("venta", 1650.03), _of("venta", 1646.2)]}
+    txt = a.texto_plano(" | ".join(p2p.posicion_anuncios(lib, 1642.83, 1655.07)))
+    assert "Venta a $ 1,655.07: puesto 2" in txt and "Compra a $ 1,642.83: puesto 3" in txt and "+0.75%" in txt
+    txt2 = a.texto_plano(" | ".join(p2p.posicion_anuncios(lib, 1651.0, 1652.0)))
+    assert "Venta a $ 1,652.00: 1º" in txt2 and "Compra a $ 1,651.00: 1º" in txt2
+
+
+def test_resumen_elige_lo_mejor():
+    cfg = _cfg()
+    an = p2p.analizar_fiat({"compra": [_of("compra", 1670.0)], "venta": [_of("venta", 1640.0)]}, "ars", 500_000, cfg)
+    assert "hay oportunidad" in p2p.resumen(an, None, None, cfg) and "anuncios en pesos" in p2p.resumen(an, None, None, cfg)
+    an2 = p2p.analizar_fiat({"compra": [_of("compra", 1660.0)], "venta": [_of("venta", 1655.0)]}, "ars", 500_000, cfg)
+    assert "por debajo del umbral" in p2p.resumen(an2, None, None, cfg)
+    assert "sin datos" in p2p.resumen(None, None, None, cfg)

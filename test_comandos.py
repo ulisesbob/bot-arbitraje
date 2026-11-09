@@ -87,7 +87,7 @@ def test_exclusion_se_aplica_en_moneda_y_dolar():
     assert "binancep2p" not in txt and "1. okexp2p" in txt
     txt = a.texto_plano(c.resp_dolar(DOLAR, {"usdt": USDT}, ahora=NOW, excluir=ex))
     assert "binancep2p" not in txt and re.search(r"USDT\s+okexp2p", txt)
-    assert a.CONFIG_DEFAULT["excluir_exchanges"] == ["airtm"]
+    assert "airtm" in a.CONFIG_DEFAULT["excluir_exchanges"] and "mexcp2p" in a.CONFIG_DEFAULT["excluir_exchanges"]
 
 
 def test_patron_p2p_excluye_todos_los_p2p():

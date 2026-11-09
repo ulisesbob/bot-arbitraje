@@ -265,11 +265,15 @@ def bloque_mercado(an: dict) -> list[str]:
         f"vende  {_fmt(a_.precio, f):>12}  {a_.metodos_cortos[:14]:<14} {_k(a_.minimo, f)}–{_k(a_.maximo, f)}",
         f"compra {_fmt(b_.precio, f):>12}  {b_.metodos_cortos[:14]:<14} {_k(b_.minimo, f)}–{_k(b_.maximo, f)}",
     ]
-    return [
+    out = [
         "\U0001f4ca <b>Mercado ahora</b> (mejor de cada lado, con tus métodos)",
         "<pre>" + "\n".join(filas) + "</pre>",
         f"<i>vende: {_rep(a_)} · compra: {_rep(b_)} · spread entre puntas {-an['cruce_pct']:+.2f}%</i>",
     ]
+    flojos = [o.nombre for o in (a_, b_) if o.ordenes_mes and o.ordenes_mes < 50]
+    if flojos:
+        out.append(f"\u26a0\ufe0f Poco historial: {', '.join(flojos)}. Para operar con ellos, montos chicos.")
+    return out
 
 
 REGLAS = ("<i>Reglas: liberá el USDT solo con la plata acreditada · los precios P2P cambian rápido, "
@@ -278,12 +282,61 @@ REGLAS = ("<i>Reglas: liberá el USDT solo con la plata acreditada · los precio
 TITULO_FIAT = {"ars": "\U0001f1e6\U0001f1f7 PESOS", "usd": "\U0001f1fa\U0001f1f8 DÓLARES"}
 
 
+def resumen(an_ars: dict | None, an_usd: dict | None, cruces: dict[str, dict | None] | None, cfg: dict) -> str:
+    """Una linea arriba de todo: lo mejor que hay ahora y si vale la pena."""
+    candidatos = []
+    for an in (an_ars, an_usd):
+        if not an:
+            continue
+        f = _fiat_nombre(an["fiat"])
+        if an["cruce_viable"]:
+            candidatos.append((an["cruce_pct"], f"cruce en Binance en {f}", an["cruce_pct"] >= cfg.get("umbral_p2p_cruce_pct", 0.3)))
+        candidatos.append((an["margen_pct"], f"anuncios en {f}", an["margen_pct"] >= cfg.get("umbral_p2p_anuncio_pct", 1.0)))
+    for fiat, cp in (cruces or {}).items():
+        if cp:
+            candidatos.append((cp["neto_pct"], f"cruce {NOMBRE_PLAT.get(cp['compra_en'])}\u2192{NOMBRE_PLAT.get(cp['venta_en'])} en {_fiat_nombre(fiat)}",
+                               cp["neto_pct"] >= cfg.get("umbral_p2p_plataformas_pct", 0.7)))
+    if not candidatos:
+        return "\U0001f4cc <b>Resumen:</b> sin datos de Binance ahora."
+    pct, que, pasa = max(candidatos, key=lambda c: c[0])
+    if pasa:
+        return f"\U0001f4cc <b>Resumen: hay oportunidad</b> \u2192 {que} <b>{pct:+.2f}%</b>. Detalle abajo."
+    if pct > 0:
+        return f"\U0001f4cc <b>Resumen:</b> lo mejor es {que} con <b>{pct:+.2f}%</b>, por debajo del umbral. Nada urgente."
+    return "\U0001f4cc <b>Resumen:</b> nada positivo ahora. Esper\u00e1 la alerta."
+
+
+def posicion_anuncios(lib: dict | None, compra: float, venta: float, fiat: str = "ars") -> list[str]:
+    """En que puesto quedan tus anuncios contra las puntas actuales."""
+    if not lib or not lib.get("compra") or not lib.get("venta"):
+        return ["\U0001f4cb <b>Tus anuncios:</b> no pude leer el libro para ubicarlos."]
+    vendedores, compradores = lib["compra"], lib["venta"]
+    pos_v = sum(1 for o in vendedores if o.precio < venta) + 1
+    pos_c = sum(1 for o in compradores if o.precio > compra) + 1
+    out = ["\U0001f4cb <b>Tus anuncios</b>"]
+    if pos_v == 1:
+        out.append(f"\u2022 Venta a {_fmt(venta, fiat)}: <b>1\u00ba</b> \u2705 (el siguiente pide {_fmt(vendedores[0].precio, fiat)})")
+    else:
+        out.append(f"\u2022 Venta a {_fmt(venta, fiat)}: puesto <b>{pos_v}</b>. Para ser 1\u00ba: {_fmt(vendedores[0].precio * 0.9995, fiat)}")
+    if pos_c == 1:
+        out.append(f"\u2022 Compra a {_fmt(compra, fiat)}: <b>1\u00ba</b> \u2705 (el siguiente paga {_fmt(compradores[0].precio, fiat)})")
+    else:
+        out.append(f"\u2022 Compra a {_fmt(compra, fiat)}: puesto <b>{pos_c}</b>. Para ser 1\u00ba: {_fmt(compradores[0].precio * 1.0005, fiat)}")
+    margen = (venta - compra) / compra * 100
+    out.append(f"\u2022 Margen entre tus dos anuncios: <b>{margen:+.2f}%</b> por vuelta")
+    return out
+
+
 def formatear_informe(an_ars: dict | None, an_usd: dict | None, dolar: dict | None, cfg: dict,
-                      cruces: dict[str, dict | None] | None = None) -> str:
+                      cruces: dict[str, dict | None] | None = None,
+                      mis_anuncios: tuple[float, float] | None = None, libro_ars: dict | None = None) -> str:
     from arbitraje import SEP
     montos = montos_p2p(cfg)
     out = [f"\U0001f465 <b>Binance P2P — USDT</b>  <i>tus métodos · "
            f"{_monto(montos.get('ars', 0), 'ars')} / {_monto(montos.get('usd', 0), 'usd')}</i>"]
+    out.append(resumen(an_ars, an_usd, cruces, cfg))
+    if mis_anuncios:
+        out += [SEP] + posicion_anuncios(libro_ars, mis_anuncios[0], mis_anuncios[1])
     for an in (an_ars, an_usd):
         if not an:
             continue
@@ -580,6 +633,10 @@ def bloque_cruce_plataformas(cp: dict | None, cfg: dict) -> list[str]:
     f = cp["fiat"]
     oc, ov = cp["compra"], cp["venta"]
     sem = "\U0001f7e2" if cp["neto_pct"] >= cfg.get("umbral_p2p_plataformas_pct", 0.7) else ("\U0001f7e1" if cp["neto_pct"] > 0 else "\U0001f534")
+    if cp["neto_pct"] <= 0:
+        return [f"\U0001f501 Cruce entre plataformas: {sem} {cp['neto_pct']:+.2f}% neto "
+                f"({NOMBRE_PLAT.get(cp['compra_en'], cp['compra_en'])} {_fmt(oc.precio, f)} \u2192 "
+                f"{NOMBRE_PLAT.get(cp['venta_en'], cp['venta_en'])} {_fmt(ov.precio, f)}). No conviene."]
     out = [f"\U0001f501 <b>Cruce entre plataformas</b>  {sem} <b>{cp['neto_pct']:+.2f}%</b> neto "
            f"(bruto {cp['pct']:+.2f}%, mover USDT ~{cp['costo_pct']:.2f}%)",
            f"• Comprás en <b>{NOMBRE_PLAT.get(cp['compra_en'], cp['compra_en'])}</b> a {_fmt(oc.precio, f)}: "

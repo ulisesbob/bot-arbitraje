@@ -44,7 +44,9 @@ class Arista:
 @dataclass
 class Rulo:
     patas: list[Arista]
-    rendimiento_pct: float
+    rendimiento_pct: float          # bruto
+    neto_pct: float = 0.0           # bruto menos el costo de mover la plata entre plataformas
+    movimientos: int = 0            # cuantas veces hay que transferir entre una pata y la siguiente
 
     @property
     def clave(self) -> str:
@@ -118,9 +120,15 @@ def mejores_por_tramo(aristas: list[Arista]) -> dict[tuple[str, str], Arista]:
     return mejores
 
 
-def buscar_rulos(aristas: list[Arista], max_patas: int = 4, min_patas: int = 3) -> list[Rulo]:
+def movimientos(patas: list[Arista]) -> int:
+    """Cada vez que la pata siguiente esta en otra plataforma hay que transferir (cripto o dolares)."""
+    return sum(1 for i in range(1, len(patas)) if patas[i].exchange != patas[i - 1].exchange)
+
+
+def buscar_rulos(aristas: list[Arista], max_patas: int = 4, min_patas: int = 3, cfg: dict | None = None) -> list[Rulo]:
     """Todas las secuencias ARS -> (intermedios distintos) -> ARS, con la mejor arista por
-    pata, ordenadas por rendimiento. Las de 2 patas son el arbitraje simple y se excluyen."""
+    pata, ordenadas por rendimiento NETO. Las de 2 patas son el arbitraje simple y se excluyen."""
+    costo = (cfg or {}).get("costo_movimiento_pct", 0.15)
     mejores = mejores_por_tramo(aristas)
     rulos = []
     for n in range(min_patas - 1, max_patas):  # cantidad de intermedios
@@ -134,34 +142,36 @@ def buscar_rulos(aristas: list[Arista], max_patas: int = 4, min_patas: int = 3) 
                 patas.append(ar)
             else:
                 producto = 1.0
-                for p in patas:
-                    producto *= p.tasa
-                rulos.append(Rulo(patas, (producto - 1) * 100))
-    rulos.sort(key=lambda r: -r.rendimiento_pct)
+                for pt in patas:
+                    producto *= pt.tasa
+                bruto = (producto - 1) * 100
+                mov = movimientos(patas)
+                rulos.append(Rulo(patas, bruto, bruto - mov * costo, mov))
+    rulos.sort(key=lambda r: -r.neto_pct)
     return rulos
 
 
 # ---------- estado: aperturas y cierres ----------
 
 def detectar_cambios(abiertos: dict, rulos: list[Rulo], umbral: float, ahora: float) -> tuple[list, list, dict]:
-    """abiertos: {clave: {"max": pct, "desde": ts, "ruta": str}} de la corrida anterior.
+    """abiertos: {clave: {"max": pct, "desde": ts, "ruta": str}} de la corrida anterior. Compara el NETO.
     Devuelve (nuevos, cerrados, abiertos_actualizados)."""
-    actuales = {r.clave: r for r in rulos if r.rendimiento_pct >= umbral}
+    actuales = {r.clave: r for r in rulos if r.neto_pct >= umbral}
     nuevo_estado: dict = {}
     nuevos, cerrados = [], []
     for clave, r in actuales.items():
         previo = abiertos.get(clave)
         if previo is None:
             nuevos.append(r)
-            nuevo_estado[clave] = {"max": r.rendimiento_pct, "desde": ahora, "ruta": r.ruta}
+            nuevo_estado[clave] = {"max": r.neto_pct, "desde": ahora, "ruta": r.ruta}
         else:
-            nuevo_estado[clave] = dict(previo, max=max(previo["max"], r.rendimiento_pct))
+            nuevo_estado[clave] = dict(previo, max=max(previo["max"], r.neto_pct))
     por_clave = {r.clave: r for r in rulos}
     for clave, previo in abiertos.items():
         if clave not in actuales:
             actual = por_clave.get(clave)
             cerrados.append({"ruta": previo.get("ruta", clave), "max": previo["max"],
-                             "ahora": actual.rendimiento_pct if actual else None,
+                             "ahora": actual.neto_pct if actual else None,
                              "duracion_min": (ahora - previo.get("desde", ahora)) / 60})
     return nuevos, cerrados, nuevo_estado
 
@@ -189,57 +199,87 @@ def _precio(ar: Arista) -> str:
     return f"{ar.moneda_precio} {a.precio(ar.precio)}"
 
 
-def formatear_rulo(r: Rulo, monto: float = 100_000) -> str:
-    out = [f"\U0001f501 <b>RULO {r.ruta}</b>   ▲ <b>{r.rendimiento_pct:+.2f}%</b>", a.SEP]
-    hay_p2p = False
-    cambia_exchange = False
+def _lugar(ar: Arista) -> str:
+    return {"banco": "el banco", "broker": "el broker (MEP)"}.get(ar.exchange, a.marcar(ar.exchange))
+
+
+def pasos_rulo(r: Rulo) -> list[str]:
+    """Una linea por pata, con la transferencia entre medio cuando cambia de plataforma."""
+    out = []
     for i, p in enumerate(r.patas):
-        marca = " \U0001f465" if p.p2p else ""
-        hay_p2p |= p.p2p
         if i and p.exchange != r.patas[i - 1].exchange:
-            cambia_exchange = True
-        out.append(f"{NUM[i]} {p.accion} en <b>{p.exchange}</b>{marca} a {_precio(p)}")
-    out.append(f"\U0001f4b0 Por cada $ {monto:,.0f}: <b>~$ {monto * r.rendimiento_pct / 100:,.0f}</b>")
+            activo = p.origen
+            que = "los d\u00f3lares" if activo == "USD" else f"el {activo}"
+            desde = "del banco" if r.patas[i - 1].exchange == "banco" else f"de {_lugar(r.patas[i - 1])}"
+            hasta = "al banco" if p.exchange == "banco" else f"a {_lugar(p)}"
+            out.append(f"   \u2194\ufe0f mand\u00e1s {que} {desde} {hasta}"
+                       + (" (red barata: TRC20 o Polygon)" if activo != "USD" else ""))
+        out.append(f"{i + 1}. {p.accion} en <b>{_lugar(p)}</b> a {_precio(p)}")
+    return out
+
+
+def notas_rulo(r: Rulo, cfg: dict | None = None) -> list[str]:
+    costo = (cfg or {}).get("costo_movimiento_pct", 0.15)
     notas = []
-    if hay_p2p:
-        notas.append("\U0001f465 P2P: precio de una persona, confirmá monto y precio antes de operar")
-    if cambia_exchange:
-        notas.append("⚠️ Entre exchanges distintos hay que transferir: confirmá red en común y comisiones")
-    if any(p.exchange in BANCARIOS for p in r.patas):
-        notas.append("\U0001f3e6 La pata bancaria tiene límites y reglas propias")
+    if r.movimientos:
+        notas.append(f"{r.movimientos} transferencia{'s' if r.movimientos > 1 else ''} \u2248 {r.movimientos * costo:.2f}%")
+    if any(p.exchange == "broker" for p in r.patas):
+        notas.append("el MEP liquida al d\u00eda siguiente")
+    if any(p.exchange == "banco" for p in r.patas):
+        notas.append("la pata del banco tiene l\u00edmites propios")
+    if any(p.p2p for p in r.patas):
+        notas.append("\U0001f465 P2P: precio de una persona, verific\u00e1")
+    return notas
+
+
+def _sem(neto: float, umbral: float) -> str:
+    return "\U0001f7e2" if neto >= umbral else ("\U0001f7e1" if neto > 0 else "\U0001f534")
+
+
+def formatear_rulo(r: Rulo, monto: float = 100_000, cfg: dict | None = None) -> str:
+    umbral = (cfg or {}).get("umbral_rulo_pct", 2.0)
+    out = [f"{_sem(r.neto_pct, umbral)} <b>{r.ruta}</b>   neto <b>{r.neto_pct:+.2f}%</b> <i>(bruto {r.rendimiento_pct:+.2f}%)</i>"]
+    out += pasos_rulo(r)
+    out.append(f"\U0001f4b0 Por cada $ {monto:,.0f}: <b>~$ {monto * r.neto_pct / 100:,.0f}</b> netos")
+    notas = notas_rulo(r, cfg)
     if notas:
-        out.append("<i>" + "\n".join(notas) + "</i>")
+        out.append("<i>" + " \u00b7 ".join(notas) + "</i>")
     return "\n".join(out)
 
 
-def formatear_nuevos(rulos: list[Rulo], monto: float = 100_000, maximo: int = 3) -> str:
-    bloques = [formatear_rulo(r, monto) for r in rulos[:maximo]]
+def formatear_nuevos(rulos: list[Rulo], monto: float = 100_000, maximo: int = 3, cfg: dict | None = None) -> str:
+    bloques = [formatear_rulo(r, monto, cfg) for r in rulos[:maximo]]
     titulo = "\U0001f6a8 <b>OPORTUNIDAD DE RULO</b>" if len(bloques) == 1 else f"\U0001f6a8 <b>{len(bloques)} OPORTUNIDADES DE RULO</b>"
-    return titulo + "\n\n" + "\n\n".join(bloques)
+    return titulo + "\n" + a.SEP + "\n" + ("\n" + a.SEP + "\n").join(bloques)
 
 
 def formatear_cerrados(cerrados: list[dict]) -> str:
-    out = ["✅ <b>SE CERRÓ LA OPORTUNIDAD</b>", a.SEP]
+    out = ["\u2705 <b>SE CERR\u00d3 LA OPORTUNIDAD</b>", a.SEP]
     for c in cerrados:
         ahora = f", ahora {c['ahora']:+.2f}%" if c.get("ahora") is not None else ""
-        dur = f", duró {c['duracion_min']:.0f} min" if c.get("duracion_min") else ""
-        out.append(f"• {c['ruta']}  (llegó a <b>{c['max']:+.2f}%</b>{ahora}{dur})")
+        dur = f", dur\u00f3 {c['duracion_min']:.0f} min" if c.get("duracion_min") else ""
+        out.append(f"\u2022 {c['ruta']}  (lleg\u00f3 a <b>{c['max']:+.2f}%</b> neto{ahora}{dur})")
     return "\n".join(out)
 
 
-def formatear_listado(rulos: list[Rulo], umbral: float, n: int = 5) -> str:
-    """Para el comando /rulos: los mejores n, superen o no el umbral."""
+def formatear_listado(rulos: list[Rulo], umbral: float, n: int = 3, monto: float = 100_000,
+                      cfg: dict | None = None) -> str:
+    """Para el comando /rulos: veredicto arriba, despues los mejores n con pasos."""
     if not rulos:
-        return "No pude armar ningún rulo con las cotizaciones de ahora."
-    out = [f"\U0001f501 <b>Mejores rulos ahora</b> — alerta si supera <b>{umbral}%</b>", a.SEP]
+        return "No pude armar ning\u00fan rulo con las cotizaciones de ahora."
+    mejor = rulos[0]
+    out = [f"\U0001f501 <b>Rulos ahora</b> \u2014 alerta si el neto supera <b>{umbral}%</b>", a.SEP]
+    if mejor.neto_pct >= umbral:
+        out.append(f"\U0001f4cc <b>HAY RULO:</b> {mejor.ruta} deja <b>{mejor.neto_pct:+.2f}%</b> neto. Pasos abajo.")
+    elif mejor.neto_pct > 0:
+        out.append(f"\U0001f4cc <b>Hoy no:</b> el mejor deja {mejor.neto_pct:+.2f}% neto, por debajo del umbral. "
+                   f"Esper\u00e1 la alerta.")
+    else:
+        out.append("\U0001f4cc <b>Hoy no:</b> ning\u00fan rulo queda positivo despu\u00e9s de costos.")
     for r in rulos[:n]:
-        sem = "\U0001f7e2" if r.rendimiento_pct >= umbral else ("\U0001f7e1" if r.rendimiento_pct > 0 else "\U0001f534")
-        out.append(f"{sem} <b>{r.ruta}</b>  <b>{r.rendimiento_pct:+.2f}%</b>")
-        out.append("<pre>" + "\n".join(
-            f"  {p.accion[:7].lower()} {p.destino if p.accion.startswith('C') else p.origen:<4} "
-            f"{(p.exchange[:18] + (' \U0001f465' if p.p2p else '')):<20} {_precio(p):>14}"
-            for p in r.patas) + "</pre>")
-    out.append("<i>\U0001f465 = P2P. Detalle de cada pata: esperá la alerta o mirá CriptoYa.</i>")
+        out += [a.SEP, formatear_rulo(r, monto, cfg)]
+    out += [a.SEP, "<i>Neto = bruto menos transferencias entre plataformas. El MEP ya incluye el castigo del broker. "
+                   "Los precios son de este momento.</i>"]
     return "\n".join(out)
 
 
@@ -251,10 +291,10 @@ def procesar(cfg: dict, cotizaciones: dict[str, dict | None], dolar: dict | None
     Devuelve (nuevos, cerrados, estado_nuevo). No toca el disco."""
     ahora = ahora or time.time()
     aristas = construir_aristas(cotizaciones, dolar, cfg, ahora)
-    rulos = buscar_rulos(aristas, cfg.get("max_patas", 4))
+    rulos = buscar_rulos(aristas, cfg.get("max_patas", 4), cfg=cfg)
     if rulos:
         m = rulos[0]
-        print(f"[rulos] mejor: {m.ruta} {m.rendimiento_pct:+.2f}%")
+        print(f"[rulos] mejor: {m.ruta} {m.neto_pct:+.2f}% neto (bruto {m.rendimiento_pct:+.2f}%)")
     nuevos, cerrados, estado = detectar_cambios(abiertos, rulos, cfg["umbral_rulo_pct"], ahora)
     tok, chat = cfg["telegram_token"], cfg["telegram_chat_id"]
     if cerrados:
@@ -262,7 +302,7 @@ def procesar(cfg: dict, cotizaciones: dict[str, dict | None], dolar: dict | None
         print("\n" + a.texto_plano(msg) + "\n")
         a.enviar_telegram(tok, chat, msg)
     if nuevos:
-        msg = formatear_nuevos(nuevos, cfg["volumen_rulo"])
+        msg = formatear_nuevos(nuevos, cfg["volumen_rulo"], cfg=cfg)
         print("\n" + a.texto_plano(msg) + "\n")
         a.enviar_telegram(tok, chat, msg)
     return nuevos, cerrados, estado
