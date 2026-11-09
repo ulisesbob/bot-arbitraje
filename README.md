@@ -78,8 +78,8 @@ Con Telegram configurado, el bot también responde mensajes (tipeá `/` y aparec
 | Comando | Qué responde |
 |---|---|
 | `/arbitraje` | mejor spread de cada par ahora, marcando los que superan el umbral |
-| `/rulos` | los 5 mejores rulos de 3 o 4 patas ahora, superen o no el umbral |
-| `/p2p` | arbitraje dentro de Binance P2P: las 3 mejores puntas de cada lado (con método de pago, límites y reputación), si hay cruce para comprar y vender ya, a qué precio publicar tus anuncios y cuánto deja, el dólar implícito, y qué hacer paso a paso |
+| `/rulos` | veredicto arriba y los 3 mejores rulos con neto (descontadas las transferencias), pasos completos con las transferencias entre medio, y notas (MEP a 24 h, pata bancaria, P2P) |
+| `/p2p` | resumen arriba con lo mejor del momento; por fiat: qué hacer (cruce, anuncios con precios exactos, o nada), mercado con la mejor punta de cada lado y su reputación, y el cruce entre plataformas (Binance, Bybit, OKX, Bitget) con el neto. `/p2p 1642.83 1655.07` además te dice en qué puesto están tus anuncios de compra y venta |
 | `/dolar` | todas las formas de comprar dólares ordenadas de más barata a más cara (oficial, blue, MEP, CCL, cripto, tarjeta) y la stablecoin más barata por exchange |
 | `/btc` `/eth` `/usdt` `/usdc` `/dai` | los 3 exchanges más baratos para comprar y los 3 mejores para vender, en pesos y en dólares |
 | `/capital 160000` o `/capital 1078 usdt` | plan para arrancar con esa plata: reparto entre Mercado Pago y Binance, la primera operación (comprar USDT si tenés pesos, vender la mitad si tenés USDT) y los dos anuncios con precio, cantidad y límites. `/p2p 1078 usdt` analiza con ese tamaño |
